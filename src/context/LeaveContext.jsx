@@ -67,7 +67,7 @@ export function LeaveProvider({ children }) {
         while (keepFetching) {
             let query = supabase
                 .from('leaves')
-                .select('leave_date, mess_number, is_admin_granted')
+                .select('leave_date, mess_number, is_admin_granted, breakfast, lunch, dinner')
                 .eq('status', 'Approved')
                 .eq('hostel_id', user.hostelId)
                 .gte('leave_date', pastStr)
@@ -99,7 +99,7 @@ export function LeaveProvider({ children }) {
             }
         }
 
-        // Transform records to map: { 'YYYY-MM-DD': [{ messNumber, isAdminGranted }] }
+        // Transform records to map: { 'YYYY-MM-DD': [{ messNumber, isAdminGranted, breakfast, lunch, dinner }] }
         const leavesMap = {};
         allData.forEach(record => {
             const d = record.leave_date;
@@ -110,11 +110,17 @@ export function LeaveProvider({ children }) {
             if (existingIdx === -1) {
                 leavesMap[d].push({
                     messNumber: record.mess_number,
-                    isAdminGranted: record.is_admin_granted
+                    isAdminGranted: record.is_admin_granted,
+                    breakfast: record.breakfast ?? true,
+                    lunch: record.lunch ?? true,
+                    dinner: record.dinner ?? true,
                 });
             } else if (record.is_admin_granted && !leavesMap[d][existingIdx].isAdminGranted) {
                 // Overwrite student leave with admin leave priority
                 leavesMap[d][existingIdx].isAdminGranted = true;
+                leavesMap[d][existingIdx].breakfast = record.breakfast ?? true;
+                leavesMap[d][existingIdx].lunch = record.lunch ?? true;
+                leavesMap[d][existingIdx].dinner = record.dinner ?? true;
             }
         });
         setLeaves(leavesMap);
@@ -125,23 +131,42 @@ export function LeaveProvider({ children }) {
         return leaves[date] || [];
     };
 
-    const isStudentOnLeave = (messNumber, date) => {
+    const isStudentOnLeave = (messNumber, date, meal) => {
         const shapeDate = date.includes('T') ? date.split('T')[0] : date;
-        return leaves[shapeDate]?.some(l => l.messNumber === messNumber);
+        const record = leaves[shapeDate]?.find(l => l.messNumber === messNumber);
+        if (!record) return false;
+        // If meal is specified, check that specific meal
+        if (meal) {
+            return record[meal] === true;
+        }
+        // Otherwise, on leave if ANY meal is on leave
+        return record.breakfast || record.lunch || record.dinner;
     };
 
-    const addLeave = async (messNumber, date, studentId, isAdminGranted = false) => {
+    const getStudentLeaveDetail = (messNumber, date) => {
+        const shapeDate = date.includes('T') ? date.split('T')[0] : date;
+        return leaves[shapeDate]?.find(l => l.messNumber === messNumber) || null;
+    };
+
+    const addLeave = async (messNumber, date, studentId, isAdminGranted = false, meals = { breakfast: true, lunch: true, dinner: true }) => {
         if (!user?.hostelId) return { success: false, error: 'No hostel assigned' };
         const shapeDate = date.includes('T') ? date.split('T')[0] : date;
+
+        // If all meals are false, treat as removal
+        if (!meals.breakfast && !meals.lunch && !meals.dinner) {
+            return removeLeave(messNumber, shapeDate);
+        }
 
         // CHECK IF ALREADY EXISTS (Local Check)
         const existingLocal = leaves[shapeDate]?.find(l => l.messNumber === messNumber);
         if (existingLocal) {
-            // If already exists, and we are trying to make it admin granted but it's not currently, update it
-            if (isAdminGranted && !existingLocal.isAdminGranted) {
-                // we will update db instead of insert
-            } else {
-                return { success: true, alreadyExists: true };
+            // If already exists with same meals and admin status, no-op
+            if (!isAdminGranted || existingLocal.isAdminGranted) {
+                if (existingLocal.breakfast === meals.breakfast &&
+                    existingLocal.lunch === meals.lunch &&
+                    existingLocal.dinner === meals.dinner) {
+                    return { success: true, alreadyExists: true };
+                }
             }
         }
 
@@ -151,7 +176,13 @@ export function LeaveProvider({ children }) {
             const filtered = current.filter(l => l.messNumber !== messNumber);
             return {
                 ...prev,
-                [shapeDate]: [...filtered, { messNumber, isAdminGranted }]
+                [shapeDate]: [...filtered, {
+                    messNumber,
+                    isAdminGranted: isAdminGranted || (existingLocal?.isAdminGranted ?? false),
+                    breakfast: meals.breakfast,
+                    lunch: meals.lunch,
+                    dinner: meals.dinner,
+                }]
             };
         });
 
@@ -167,18 +198,28 @@ export function LeaveProvider({ children }) {
         }
 
         if (existingLocal) {
-             const { error: updError } = await supabase.from('leaves')
-                 .update({ is_admin_granted: true })
-                 .eq('mess_number', messNumber)
-                 .eq('leave_date', shapeDate)
-                 .eq('hostel_id', user.hostelId);
-             
-             if (updError) {
-                 console.error('Error updating leave override:', updError);
-                 fetchLeaves();
-                 return { success: false, error: updError.message };
-             }
-             return { success: true };
+            // Update existing record
+            const updatePayload = {
+                breakfast: meals.breakfast,
+                lunch: meals.lunch,
+                dinner: meals.dinner,
+            };
+            if (isAdminGranted) {
+                updatePayload.is_admin_granted = true;
+            }
+
+            const { error: updError } = await supabase.from('leaves')
+                .update(updatePayload)
+                .eq('mess_number', messNumber)
+                .eq('leave_date', shapeDate)
+                .eq('hostel_id', user.hostelId);
+
+            if (updError) {
+                console.error('Error updating leave:', updError);
+                fetchLeaves();
+                return { success: false, error: updError.message };
+            }
+            return { success: true };
         }
 
         const { error } = await supabase.from('leaves').insert([{
@@ -187,7 +228,10 @@ export function LeaveProvider({ children }) {
             leave_date: shapeDate,
             status: 'Approved',
             hostel_id: user.hostelId,
-            is_admin_granted: isAdminGranted
+            is_admin_granted: isAdminGranted,
+            breakfast: meals.breakfast,
+            lunch: meals.lunch,
+            dinner: meals.dinner,
         }]);
 
         if (error) {
@@ -199,7 +243,7 @@ export function LeaveProvider({ children }) {
         return { success: true };
     };
 
-    const addBulkLeaves = async (studentsList, date, isAdminGranted = false) => {
+    const addBulkLeaves = async (studentsList, date, isAdminGranted = false, meals = { breakfast: true, lunch: true, dinner: true }) => {
         if (!user?.hostelId) return { success: false, error: 'No hostel assigned' };
         const shapeDate = date.includes('T') ? date.split('T')[0] : date;
 
@@ -209,7 +253,10 @@ export function LeaveProvider({ children }) {
             leave_date: shapeDate,
             status: 'Approved',
             hostel_id: user.hostelId,
-            is_admin_granted: isAdminGranted
+            is_admin_granted: isAdminGranted,
+            breakfast: meals.breakfast,
+            lunch: meals.lunch,
+            dinner: meals.dinner,
         }));
 
         // Optimistic update
@@ -218,7 +265,13 @@ export function LeaveProvider({ children }) {
             // Remove existing to replace
             const updated = current.filter(l => !studentsList.some(s => s.messNumber === l.messNumber));
             newEntries.forEach(entry => {
-                updated.push({ messNumber: entry.mess_number, isAdminGranted });
+                updated.push({
+                    messNumber: entry.mess_number,
+                    isAdminGranted,
+                    breakfast: meals.breakfast,
+                    lunch: meals.lunch,
+                    dinner: meals.dinner,
+                });
             });
             return { ...prev, [shapeDate]: updated };
         });
@@ -312,7 +365,7 @@ export function LeaveProvider({ children }) {
     };
 
     return (
-        <LeaveContext.Provider value={{ leaves, loading, getLeavesByDate, addLeave, addBulkLeaves, removeLeave, removeBulkLeaves, isStudentOnLeave, refreshLeaves: fetchLeaves }}>
+        <LeaveContext.Provider value={{ leaves, loading, getLeavesByDate, addLeave, addBulkLeaves, removeLeave, removeBulkLeaves, isStudentOnLeave, getStudentLeaveDetail, refreshLeaves: fetchLeaves }}>
             {children}
         </LeaveContext.Provider>
     );

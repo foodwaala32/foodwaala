@@ -3,6 +3,7 @@ import { useLeaves } from '../context/LeaveContext';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../context/AuthContext';
 import { useStudents } from '../context/StudentContext';
+import { useHostel } from '../context/HostelContext';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
@@ -14,6 +15,7 @@ export default function ManageLeaves() {
     const { getLeavesByDate, addLeave, addBulkLeaves, removeLeave, removeBulkLeaves, isStudentOnLeave, refreshLeaves, loading: leavesLoading } = useLeaves();
     const { user } = useAuth();
     const { students, loading: studentsLoading } = useStudents();
+    const { leaveMode } = useHostel();
     const [selectedDate, setSelectedDate] = useState(new Date());
 
     const isLoading = leavesLoading || studentsLoading;
@@ -47,7 +49,6 @@ export default function ManageLeaves() {
             const activeStudents = students.filter(s => s.messStatus === 'Active');
             if (!window.confirm(`Are you sure you want to GRANT leave for ALL ${activeStudents.length} active students for ${dateKey}?`)) return;
 
-            // Debugging Logs requested by user
             console.log(`[ManageLeaves] "Select All" triggered. Users selected:`, activeStudents.length);
             const selectedIds = activeStudents.map(s => s.id);
             console.log(`[ManageLeaves] selectedIds.length before sending request:`, selectedIds.length);
@@ -146,11 +147,11 @@ export default function ManageLeaves() {
                     leave_date: dateKey,
                     status: 'Approved',
                     hostel_id: user.hostelId,
-                    is_admin_granted: true
+                    is_admin_granted: true,
+                    ...(leaveMode === 'per_meal' && { breakfast: true, lunch: true, dinner: true })
                 }))
             );
 
-            // BATCHING: Supabase/PostgREST can struggle with very large payload arrays.
             const BATCH_SIZE = 100;
             let successCount = 0;
             let hasError = false;
@@ -182,7 +183,6 @@ export default function ManageLeaves() {
 
             toast.loading(`Granting ${dates.length} leave(s)...`, { id: 'ltj-grant' });
 
-            // CLEANUP EXISTING LEAVES FOR THIS STUDENT AND DATES
             const { error: cleanupErr } = await supabase.from('leaves')
                 .delete()
                 .eq('mess_number', ltjMessNumber)
@@ -194,14 +194,14 @@ export default function ManageLeaves() {
                 return;
             }
 
-            // Build all records for a SINGLE bulk insert
             const records = dates.map(dateKey => ({
                 student_id: selectedStudent.id,
                 mess_number: ltjMessNumber,
                 leave_date: dateKey,
                 status: 'Approved',
                 hostel_id: user.hostelId,
-                is_admin_granted: true
+                is_admin_granted: true,
+                ...(leaveMode === 'per_meal' && { breakfast: true, lunch: true, dinner: true })
             }));
 
             const { error } = await supabase
@@ -281,12 +281,32 @@ export default function ManageLeaves() {
                                                 <th className="px-4 py-3 font-medium text-gray-700">Mess No</th>
                                                 <th className="px-4 py-3 font-medium text-gray-700">Name</th>
                                                 <th className="px-4 py-3 font-medium text-gray-700 hidden md:table-cell">Phone</th>
+                                                {leaveMode === 'per_meal' && (
+                                                    <th className="px-4 py-3 font-medium text-gray-700">Meals</th>
+                                                )}
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-gray-100">
                                             {leavesForDate.map(leaf => {
                                                 const messNo = leaf.messNumber;
                                                 const student = students.find(s => s.messNumber === messNo);
+                                                
+                                                let mealsContent = null;
+                                                if (leaveMode === 'per_meal') {
+                                                    const isFullDay = leaf.breakfast && leaf.lunch && leaf.dinner;
+                                                    if (isFullDay) {
+                                                        mealsContent = <Badge variant="secondary">Full Day</Badge>;
+                                                    } else {
+                                                        mealsContent = (
+                                                            <div className="flex gap-1">
+                                                                {leaf.breakfast && <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-200">B</Badge>}
+                                                                {leaf.lunch && <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-200">L</Badge>}
+                                                                {leaf.dinner && <Badge className="bg-purple-100 text-purple-800 hover:bg-purple-200">D</Badge>}
+                                                            </div>
+                                                        );
+                                                    }
+                                                }
+
                                                 return (
                                                     <tr key={messNo} className="hover:bg-gray-50">
                                                         <td className="px-4 py-3 font-medium flex items-center gap-2">
@@ -297,6 +317,11 @@ export default function ManageLeaves() {
                                                         </td>
                                                         <td className="px-4 py-3">{student ? student.name : 'Unknown'}</td>
                                                         <td className="px-4 py-3 hidden md:table-cell">{student ? student.phone : '-'}</td>
+                                                        {leaveMode === 'per_meal' && (
+                                                            <td className="px-4 py-3">
+                                                                {mealsContent}
+                                                            </td>
+                                                        )}
                                                     </tr>
                                                 );
                                             })}

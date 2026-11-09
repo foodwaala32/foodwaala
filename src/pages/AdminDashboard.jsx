@@ -2,24 +2,74 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Skeleton } from '../components/ui/skeleton';
-import { Users, AlertCircle, UtensilsCrossed } from 'lucide-react';
+import { Users, AlertCircle, UtensilsCrossed, Coffee, Soup } from 'lucide-react';
 import { useStudents } from '../context/StudentContext';
 import { useLeaves } from '../context/LeaveContext';
+import { useHostel } from '../context/HostelContext';
 
 export default function AdminDashboard() {
     const { students, loading: studentsLoading } = useStudents();
     const { getLeavesByDate, loading: leavesLoading } = useLeaves();
+    const { leaveMode } = useHostel();
 
     const isLoading = studentsLoading || leavesLoading;
 
     // Calculate stats
     const today = new Date().toLocaleDateString('en-CA');
     const totalStudents = students.length;
-    const leavesToday = (getLeavesByDate(today) || []).length;
-    const activeToday = totalStudents - leavesToday;
+    const todayLeaves = getLeavesByDate(today) || [];
+    
+    const leavesTodayCount = todayLeaves.length; // Students with ANY leave today
+    const activeToday = totalStudents - leavesTodayCount;
     const attendancePercentage = totalStudents > 0 ? Math.round((activeToday / totalStudents) * 100) : 0;
 
-    const stats = [
+    // Per-meal calculations
+    const breakfastLeaves = todayLeaves.filter(l => l.breakfast).length;
+    const lunchLeaves = todayLeaves.filter(l => l.lunch).length;
+    const dinnerLeaves = todayLeaves.filter(l => l.dinner).length;
+
+    const stats = leaveMode === 'per_meal' ? [
+        {
+            label: 'Total Students',
+            value: totalStudents,
+            desc: 'Registered students',
+            icon: Users,
+            color: 'text-blue-600',
+            bg: 'bg-blue-50'
+        },
+        {
+            label: 'Breakfast Today',
+            value: totalStudents - breakfastLeaves,
+            desc: `${breakfastLeaves} on leave`,
+            icon: Coffee,
+            color: 'text-emerald-600',
+            bg: 'bg-emerald-50'
+        },
+        {
+            label: 'Lunch Today',
+            value: totalStudents - lunchLeaves,
+            desc: `${lunchLeaves} on leave`,
+            icon: Soup,
+            color: 'text-emerald-600',
+            bg: 'bg-emerald-50'
+        },
+        {
+            label: 'Dinner Today',
+            value: totalStudents - dinnerLeaves,
+            desc: `${dinnerLeaves} on leave`,
+            icon: UtensilsCrossed,
+            color: 'text-emerald-600',
+            bg: 'bg-emerald-50'
+        },
+        {
+            label: 'Any Leave Today',
+            value: leavesTodayCount,
+            desc: 'Students with partial/full leave',
+            icon: AlertCircle,
+            color: 'text-amber-600',
+            bg: 'bg-amber-50'
+        },
+    ] : [
         {
             label: 'Total Students',
             value: totalStudents,
@@ -38,7 +88,7 @@ export default function AdminDashboard() {
         },
         {
             label: 'Leave Today',
-            value: leavesToday,
+            value: leavesTodayCount,
             desc: 'Students on leave',
             icon: AlertCircle,
             color: 'text-amber-600',
@@ -53,8 +103,7 @@ export default function AdminDashboard() {
                 <p className="text-gray-500 mt-2">Welcome back, Admin. Here's today's summary.</p>
             </div>
 
-            {/* Stats Grid - Simplified to 3 Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className={`grid grid-cols-1 md:grid-cols-3 ${leaveMode === 'per_meal' ? 'lg:grid-cols-5' : ''} gap-6`}>
                 {stats.map((stat) => (
                     <Card key={stat.label} className="border-gray-200 shadow-sm hover:shadow-md transition-shadow">
                         <CardContent className="p-6">

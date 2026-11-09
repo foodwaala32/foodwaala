@@ -11,6 +11,10 @@ export function HostelProvider({ children }) {
         cutoffTime: 20, // Default fallback (8 PM)
         hostelName: '',
         maxLeaves: 10, // Default fallback (null = unlimited)
+        leaveMode: 'full_day', // 'full_day' or 'per_meal'
+        breakfastRate: 40,
+        lunchRate: 50,
+        dinnerRate: 50,
         loading: true,
     });
 
@@ -24,7 +28,7 @@ export function HostelProvider({ children }) {
             try {
                 const { data, error } = await supabase
                     .from('hostels')
-                    .select('name, mess_rate, cutoff_time, max_leaves')
+                    .select('name, mess_rate, cutoff_time, leave_mode, breakfast_rate, lunch_rate, dinner_rate')
                     .eq('id', user.hostelId)
                     .single();
 
@@ -40,7 +44,11 @@ export function HostelProvider({ children }) {
                         messRate: data.mess_rate,
                         cutoffTime: data.cutoff_time,
                         hostelName: data.name,
-                        maxLeaves: data.max_leaves, // null from DB = unlimited
+                        maxLeaves: 10, // Default fallback (null = unlimited)
+                        leaveMode: data.leave_mode || 'full_day',
+                        breakfastRate: data.breakfast_rate ?? 40,
+                        lunchRate: data.lunch_rate ?? 50,
+                        dinnerRate: data.dinner_rate ?? 50,
                         loading: false,
                     });
                 }
@@ -58,12 +66,28 @@ export function HostelProvider({ children }) {
         if (!user?.hostelId) return { success: false, error: 'No hostel ID found for user' };
 
         try {
+            const updatePayload = {
+                mess_rate: newSettings.messRate,
+                cutoff_time: newSettings.cutoffTime,
+            };
+
+            // Include leave mode and per-meal rates if provided
+            if (newSettings.leaveMode !== undefined) {
+                updatePayload.leave_mode = newSettings.leaveMode;
+            }
+            if (newSettings.breakfastRate !== undefined) {
+                updatePayload.breakfast_rate = newSettings.breakfastRate;
+            }
+            if (newSettings.lunchRate !== undefined) {
+                updatePayload.lunch_rate = newSettings.lunchRate;
+            }
+            if (newSettings.dinnerRate !== undefined) {
+                updatePayload.dinner_rate = newSettings.dinnerRate;
+            }
+
             const { error } = await supabase
                 .from('hostels')
-                .update({
-                    mess_rate: newSettings.messRate,
-                    cutoff_time: newSettings.cutoffTime,
-                })
+                .update(updatePayload)
                 .eq('id', user.hostelId);
 
             if (error) throw error;
@@ -73,6 +97,10 @@ export function HostelProvider({ children }) {
                 ...prev,
                 messRate: newSettings.messRate,
                 cutoffTime: newSettings.cutoffTime,
+                ...(newSettings.leaveMode !== undefined && { leaveMode: newSettings.leaveMode }),
+                ...(newSettings.breakfastRate !== undefined && { breakfastRate: newSettings.breakfastRate }),
+                ...(newSettings.lunchRate !== undefined && { lunchRate: newSettings.lunchRate }),
+                ...(newSettings.dinnerRate !== undefined && { dinnerRate: newSettings.dinnerRate }),
             }));
 
             return { success: true };

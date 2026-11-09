@@ -60,12 +60,20 @@ export function MenuProvider({ children }) {
             if (error) throw error;
 
             // Transform array [{ day_of_week: 'Monday', ... }] to object { 'Monday': { ... } }
+            const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
             const menuMap = {};
+            days.forEach(d => {
+                menuMap[d] = {
+                    breakfast: [],
+                    lunch: [],
+                    dinner: []
+                };
+            });
+
             data.forEach(item => {
                 menuMap[item.day_of_week] = {
                     breakfast: item.breakfast || [],
                     lunch: item.lunch || [],
-                    snack: item.snack || [],
                     dinner: item.dinner || []
                 };
             });
@@ -97,12 +105,34 @@ export function MenuProvider({ children }) {
             return updated;
         });
 
-        // DB Update
-        const { error } = await supabase
+        // DB Update or Insert (Self-healing)
+        const { data: existingRows, error: checkError } = await supabase
             .from('weekly_menu')
-            .update({ [mealType]: newItems })
+            .select('id')
             .eq('day_of_week', day)
             .eq('hostel_id', user.hostelId);
+
+        let error;
+        if (!existingRows || existingRows.length === 0) {
+            const { error: insertError } = await supabase
+                .from('weekly_menu')
+                .insert({
+                    hostel_id: user.hostelId,
+                    day_of_week: day,
+                    [mealType]: newItems,
+                    breakfast: mealType === 'breakfast' ? newItems : [],
+                    lunch: mealType === 'lunch' ? newItems : [],
+                    dinner: mealType === 'dinner' ? newItems : []
+                });
+            error = insertError;
+        } else {
+            const { error: updateError } = await supabase
+                .from('weekly_menu')
+                .update({ [mealType]: newItems })
+                .eq('day_of_week', day)
+                .eq('hostel_id', user.hostelId);
+            error = updateError;
+        }
 
         if (error) {
             console.error('Error updating menu:', error);

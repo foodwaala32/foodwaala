@@ -1,17 +1,37 @@
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useLeaves } from '../context/LeaveContext';
-import { UtensilsCrossed, CalendarOff, Receipt, ArrowRight, Megaphone } from 'lucide-react';
+import { useHostel } from '../context/HostelContext';
+import { UtensilsCrossed, CalendarOff, Receipt, ArrowRight } from 'lucide-react';
 import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 
 export default function Dashboard() {
     const { user } = useAuth();
-    const { isStudentOnLeave } = useLeaves();
+    const { getStudentLeaveDetail } = useLeaves();
+    const { leaveMode } = useHostel();
     const navigate = useNavigate();
 
     const today = new Date().toLocaleDateString('en-CA');
-    const isOnLeaveToday = user?.messNumber ? isStudentOnLeave(user.messNumber, today) : false;
+    const leaveDetail = user?.messNumber ? getStudentLeaveDetail(user.messNumber, today) : null;
+    
+    let isFullLeave = false;
+    let partialMeals = [];
+
+    if (leaveDetail) {
+        if (leaveMode === 'per_meal') {
+            if (leaveDetail.breakfast) partialMeals.push('Breakfast');
+            if (leaveDetail.lunch) partialMeals.push('Lunch');
+            if (leaveDetail.dinner) partialMeals.push('Dinner');
+            
+            if (partialMeals.length === 3) {
+                isFullLeave = true;
+                partialMeals = [];
+            }
+        } else {
+            isFullLeave = true;
+        }
+    }
 
     const actions = [
         {
@@ -22,15 +42,6 @@ export default function Dashboard() {
             color: 'text-orange-600',
             bg: 'bg-orange-50',
             border: 'hover:border-orange-200',
-        },
-        {
-            title: 'STUDENT OFFERS',
-            description: 'Check out exclusive student discounts, vouchers and local brochures.',
-            icon: Megaphone,
-            path: '/dashboard/offers',
-            color: 'text-purple-600',
-            bg: 'bg-purple-50',
-            border: 'border-purple-300 hover:border-purple-400 shadow-md shadow-purple-100 hover:shadow-lg hover:shadow-purple-200/50 ring-1 ring-purple-500/10',
         },
         {
             title: 'Apply for Leave',
@@ -61,11 +72,17 @@ export default function Dashboard() {
                 </h1>
                 <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                     <p className="text-lg text-gray-500">What would you like to do today?</p>
-                    <div className="flex">
-                        {!isOnLeaveToday ? (
+                    <div className="flex gap-2 flex-wrap">
+                        {!leaveDetail ? (
                             <Badge variant="success" className="rounded-full px-3">Mess Active</Badge>
-                        ) : (
+                        ) : isFullLeave ? (
                             <Badge variant="warning" className="rounded-full px-3">On Leave Today</Badge>
+                        ) : partialMeals.length > 0 ? (
+                            <Badge variant="warning" className="rounded-full px-3">
+                                Leave: {partialMeals.join(', ')}
+                            </Badge>
+                        ) : (
+                            <Badge variant="success" className="rounded-full px-3">Mess Active</Badge>
                         )}
                     </div>
                 </div>

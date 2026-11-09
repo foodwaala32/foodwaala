@@ -39,7 +39,7 @@ export default function AdminSidebar() {
                 <div className="w-8 h-8 rounded-lg bg-indigo-500 flex items-center justify-center">
                     <ChefHat className="w-4 h-4 text-white" />
                 </div>
-                <span className="text-lg font-bold tracking-tight text-white">MessPro Admin</span>
+                <span className="text-lg font-bold tracking-tight text-white">MessPro LH Admin</span>
             </div>
 
             {/* Navigation */}

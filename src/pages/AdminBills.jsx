@@ -13,13 +13,24 @@ import { saveAs } from 'file-saver';
 export default function AdminBills() {
     const { user } = useAuth();
     const { students } = useStudents();
-    const { messRate } = useHostel();
+    const { messRate, leaveMode, breakfastRate, lunchRate, dinnerRate } = useHostel();
+
+    const now = new Date();
+    const START_MONTH_STR = '2026-08';
+    const START_DATE_STR = '2026-08-01';
+    const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const thisMonthStartStr = `${currentMonthStr}-01`;
+    const thisMonthEndStr = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
+
+    const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const nextMonthStr = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, '0')}`;
+    const nextMonthEndStr = new Date(nextMonth.getFullYear(), nextMonth.getMonth() + 1, 0).toISOString().slice(0, 10);
 
     // Mode: 'month' or 'range'
     const [mode, setMode] = useState('month');
-    const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
-    const [startDate, setStartDate] = useState(new Date().toISOString().slice(0, 10));
-    const [endDate, setEndDate] = useState(new Date().toISOString().slice(0, 10));
+    const [selectedMonth, setSelectedMonth] = useState(currentMonthStr);
+    const [startDate, setStartDate] = useState(thisMonthStartStr);
+    const [endDate, setEndDate] = useState(thisMonthEndStr);
     const [rangeLeaves, setRangeLeaves] = useState({});
     const [loadingLeaves, setLoadingLeaves] = useState(false);
 
@@ -66,7 +77,7 @@ export default function AdminBills() {
             while (keepFetching) {
                 const { data, error } = await supabase
                     .from('leaves')
-                    .select('leave_date, mess_number')
+                    .select('leave_date, mess_number, breakfast, lunch, dinner')
                     .eq('status', 'Approved')
                     .eq('hostel_id', user.hostelId)
                     .gte('leave_date', sDate)
@@ -86,7 +97,12 @@ export default function AdminBills() {
             allData.forEach(record => {
                 const d = record.leave_date;
                 if (!leavesMap[d]) leavesMap[d] = [];
-                leavesMap[d].push({ messNumber: record.mess_number });
+                leavesMap[d].push({ 
+                    messNumber: record.mess_number,
+                    breakfast: record.breakfast,
+                    lunch: record.lunch,
+                    dinner: record.dinner
+                });
             });
             setRangeLeaves(leavesMap);
             setLoadingLeaves(false);
@@ -101,22 +117,49 @@ export default function AdminBills() {
 
     // Calculate bills
     const studentBills = students.map(student => {
-        let leaveCount = 0;
+        let studentTotalDays = 0;
+        let leaveCount = 0; // used for full_day
+        let bMissed = 0; // used for per_meal
+        let lMissed = 0;
+        let dMissed = 0;
+
         dateRange.forEach(dateKey => {
+            if (student.joinDate && dateKey < student.joinDate) {
+                return;
+            }
+            studentTotalDays++;
+
             const leavesOnDay = rangeLeaves[dateKey] || [];
-            if (leavesOnDay.some(l => l.messNumber === student.messNumber)) {
+            const studentLeave = leavesOnDay.find(l => l.messNumber === student.messNumber);
+            if (studentLeave) {
                 leaveCount++;
+                if (studentLeave.breakfast) bMissed++;
+                if (studentLeave.lunch) lMissed++;
+                if (studentLeave.dinner) dMissed++;
             }
         });
 
-        const billableDays = totalDays - leaveCount;
-        const totalBill = billableDays * messRate;
+        let billableDays = 0;
+        let totalBill = 0;
+
+        if (leaveMode === 'per_meal') {
+            const bEaten = Math.max(0, studentTotalDays - bMissed);
+            const lEaten = Math.max(0, studentTotalDays - lMissed);
+            const dEaten = Math.max(0, studentTotalDays - dMissed);
+            totalBill = (bEaten * breakfastRate) + (lEaten * lunchRate) + (dEaten * dinnerRate);
+        } else {
+            billableDays = Math.max(0, studentTotalDays - leaveCount);
+            totalBill = billableDays * messRate;
+        }
 
         return {
             ...student,
-            totalDays,
+            totalDays: studentTotalDays,
             leaveCount,
             billableDays,
+            bMissed,
+            lMissed,
+            dMissed,
             totalBill,
         };
     });
@@ -124,49 +167,79 @@ export default function AdminBills() {
     // Grand totals
     const grandTotal = studentBills.reduce((sum, s) => sum + s.totalBill, 0);
     const totalLeaves = studentBills.reduce((sum, s) => sum + s.leaveCount, 0);
+    const totalBMissed = studentBills.reduce((sum, s) => sum + s.bMissed, 0);
+    const totalLMissed = studentBills.reduce((sum, s) => sum + s.lMissed, 0);
+    const totalDMissed = studentBills.reduce((sum, s) => sum + s.dMissed, 0);
 
     const handleDownloadExcel = () => {
-        // Data rows
-        const rows = studentBills.map(s => ({
-            'Mess No': s.messNumber,
-            'Student Name': s.name,
-            'Total Days': s.totalDays,
-            'Leaves Taken': s.leaveCount,
-            'Billable Days': s.billableDays,
-            'Total Bill (₹)': s.totalBill,
-        }));
+        let rows = [];
+        let cols = [];
 
-        // Summary row
-        rows.push({
-            'Mess No': '',
-            'Student Name': 'TOTAL',
-            'Total Days': '',
-            'Leaves Taken': totalLeaves,
-            'Billable Days': '',
-            'Total Bill (₹)': grandTotal,
-        });
+        if (leaveMode === 'per_meal') {
+            rows = studentBills.map(s => ({
+                'Mess No': s.messNumber,
+                'Student Name': s.name,
+                'Total Days': s.totalDays,
+                'B Missed': s.bMissed,
+                'L Missed': s.lMissed,
+                'D Missed': s.dMissed,
+                'Total Bill (\u20B9)': s.totalBill,
+            }));
+            rows.push({
+                'Mess No': '',
+                'Student Name': 'TOTAL',
+                'Total Days': '',
+                'B Missed': totalBMissed,
+                'L Missed': totalLMissed,
+                'D Missed': totalDMissed,
+                'Total Bill (\u20B9)': grandTotal,
+            });
+            cols = [
+                { wch: 12 }, // Mess No
+                { wch: 22 }, // Student Name
+                { wch: 12 }, // Total Days
+                { wch: 10 }, // B Missed
+                { wch: 10 }, // L Missed
+                { wch: 10 }, // D Missed
+                { wch: 16 }, // Total Bill
+            ];
+        } else {
+            rows = studentBills.map(s => ({
+                'Mess No': s.messNumber,
+                'Student Name': s.name,
+                'Total Days': s.totalDays,
+                'Leaves Taken': s.leaveCount,
+                'Billable Days': s.billableDays,
+                'Total Bill (\u20B9)': s.totalBill,
+            }));
+            rows.push({
+                'Mess No': '',
+                'Student Name': 'TOTAL',
+                'Total Days': '',
+                'Leaves Taken': totalLeaves,
+                'Billable Days': '',
+                'Total Bill (\u20B9)': grandTotal,
+            });
+            cols = [
+                { wch: 12 }, // Mess No
+                { wch: 22 }, // Student Name
+                { wch: 12 }, // Total Days
+                { wch: 14 }, // Leaves Taken
+                { wch: 14 }, // Billable Days
+                { wch: 16 }, // Total Bill
+            ];
+        }
 
         const worksheet = XLSX.utils.json_to_sheet(rows);
-
-        // Set column widths
-        worksheet['!cols'] = [
-            { wch: 12 }, // Mess No
-            { wch: 22 }, // Student Name
-            { wch: 12 }, // Total Days
-            { wch: 14 }, // Leaves Taken
-            { wch: 14 }, // Billable Days
-            { wch: 16 }, // Total Bill
-        ];
+        worksheet['!cols'] = cols;
 
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, 'Mess Bills');
 
-        // Generate filename
         const filename = mode === 'month'
             ? `mess_bills_${selectedMonth}.xlsx`
             : `mess_bills_${startDate}_to_${endDate}.xlsx`;
 
-        // Download as proper .xlsx using data URI
         const wbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'base64' });
         const link = document.createElement('a');
         link.href = `data:application/octet-stream;base64,${wbout}`;
@@ -178,80 +251,85 @@ export default function AdminBills() {
     };
 
     const handleDownloadOverview = () => {
-        // Generate rows with daily status
         const rows = studentBills.map(s => {
             const row = {
                 'MESS NO': s.messNumber,
                 'NAME': s.name,
             };
 
-            // Add daily columns
             dateRange.forEach(dateKey => {
-                // Use simply the day number as header (1, 2, 3...) derived from string YYYY-MM-DD
-                // dateKey is YYYY-MM-DD. Split by '-' take last part, remove leading zero.
                 const dayPart = dateKey.split('-')[2];
                 const dayHeader = dayPart.startsWith('0') ? dayPart.substring(1) : dayPart;
 
-                const leavesOnDay = rangeLeaves[dateKey] || [];
-                const isLeave = leavesOnDay.some(l => l.messNumber === s.messNumber);
-
-                row[dayHeader] = isLeave ? 'L' : 'X';
+                if (s.joinDate && dateKey < s.joinDate) {
+                    row[dayHeader] = '-';
+                } else {
+                    const leavesOnDay = rangeLeaves[dateKey] || [];
+                    const studentLeave = leavesOnDay.find(l => l.messNumber === s.messNumber);
+                    
+                    if (studentLeave) {
+                        if (leaveMode === 'per_meal') {
+                            const meals = [];
+                            if (studentLeave.breakfast) meals.push('B');
+                            if (studentLeave.lunch) meals.push('L');
+                            if (studentLeave.dinner) meals.push('D');
+                            row[dayHeader] = meals.length === 3 ? 'BLD' : meals.join('');
+                        } else {
+                            row[dayHeader] = 'L';
+                        }
+                    } else {
+                        row[dayHeader] = 'X';
+                    }
+                }
             });
 
-            // Add summary columns
-            row['TOTAL DAYS'] = s.billableDays; // Active days = Billable Days
-            row['TOTAL AMOUNT'] = s.totalBill; // Final total amount
+            if (leaveMode !== 'per_meal') {
+                row['TOTAL DAYS'] = s.billableDays;
+            }
+            row['TOTAL AMOUNT'] = s.totalBill;
 
             return row;
         });
 
-        // Calculate Grand Totals for summary row
         const grandTotalAmount = rows.reduce((sum, r) => sum + (r['TOTAL AMOUNT'] || 0), 0);
 
         const summaryRow = {
             'MESS NO': '',
             'NAME': 'TOTAL',
-            'TOTAL DAYS': '',
+            ...(leaveMode !== 'per_meal' && { 'TOTAL DAYS': '' }),
             'TOTAL AMOUNT': grandTotalAmount
         };
 
         rows.push(summaryRow);
 
-        // Define exact header order
         const header = ['MESS NO', 'NAME'];
         dateRange.forEach(dateKey => {
             const dayPart = dateKey.split('-')[2];
             const dayHeader = dayPart.startsWith('0') ? dayPart.substring(1) : dayPart;
             header.push(dayHeader);
         });
-        header.push('TOTAL DAYS');
+        if (leaveMode !== 'per_meal') header.push('TOTAL DAYS');
         header.push('TOTAL AMOUNT');
 
-        // Create worksheet with strict header order
         const worksheet = XLSX.utils.json_to_sheet(rows, { header });
 
-        // Set column widths
         const cols = [
-            { wch: 10 }, // Mess No
-            { wch: 20 }, // Name
+            { wch: 10 },
+            { wch: 20 },
         ];
-        // Add width for days
-        dateRange.forEach(() => cols.push({ wch: 3 }));
-        // Add width for summary cols
-        cols.push({ wch: 12 }); // Total Days
-        cols.push({ wch: 16 }); // Total Amount
+        dateRange.forEach(() => cols.push({ wch: leaveMode === 'per_meal' ? 4 : 3 }));
+        if (leaveMode !== 'per_meal') cols.push({ wch: 12 });
+        cols.push({ wch: 16 });
 
         worksheet['!cols'] = cols;
 
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, 'Overview');
 
-        // Generate filename
         const filename = mode === 'month'
             ? `mess_overview_${selectedMonth}.xlsx`
             : `mess_overview_${startDate}_to_${endDate}.xlsx`;
 
-        // Download
         const wbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'base64' });
         const link = document.createElement('a');
         link.href = `data:application/octet-stream;base64,${wbout}`;
@@ -312,6 +390,8 @@ export default function AdminBills() {
                                     <Calendar className="w-4 h-4 text-gray-400 shrink-0" />
                                     <input
                                         type="month"
+                                        min={START_MONTH_STR}
+                                        max={nextMonthStr}
                                         className="text-sm outline-none text-gray-700 bg-transparent w-full sm:w-auto"
                                         value={selectedMonth}
                                         onChange={(e) => setSelectedMonth(e.target.value)}
@@ -323,6 +403,8 @@ export default function AdminBills() {
                                         <span className="text-xs text-gray-400 font-medium whitespace-nowrap">From</span>
                                         <input
                                             type="date"
+                                            min={START_DATE_STR}
+                                            max={endDate || nextMonthEndStr}
                                             className="text-sm outline-none text-gray-700 bg-transparent w-full"
                                             value={startDate}
                                             onChange={(e) => setStartDate(e.target.value)}
@@ -333,6 +415,8 @@ export default function AdminBills() {
                                         <span className="text-xs text-gray-400 font-medium whitespace-nowrap">To</span>
                                         <input
                                             type="date"
+                                            min={startDate || START_DATE_STR}
+                                            max={nextMonthEndStr}
                                             className="text-sm outline-none text-gray-700 bg-transparent w-full"
                                             value={endDate}
                                             onChange={(e) => setEndDate(e.target.value)}
@@ -360,7 +444,9 @@ export default function AdminBills() {
                 <CardHeader className="bg-gray-50/50 border-b border-gray-100">
                     <CardTitle className="text-lg">Bill Summary — {periodLabel}</CardTitle>
                     <CardDescription>
-                        Rate: ₹{messRate}/day
+                        {leaveMode === 'per_meal' 
+                            ? `Rates: Breakfast ₹${breakfastRate}, Lunch ₹${lunchRate}, Dinner ₹${dinnerRate}`
+                            : `Rate: ₹${messRate}/day`}
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="p-0">
@@ -371,8 +457,19 @@ export default function AdminBills() {
                                     <th className="px-6 py-4">Mess No</th>
                                     <th className="px-6 py-4">Name</th>
                                     <th className="px-6 py-4 text-center">Total Days</th>
-                                    <th className="px-6 py-4 text-center">Leaves</th>
-                                    <th className="px-6 py-4 text-center">Billable Days</th>
+                                    
+                                    {leaveMode === 'per_meal' ? (
+                                        <>
+                                            <th className="px-6 py-4 text-center">B Missed</th>
+                                            <th className="px-6 py-4 text-center">L Missed</th>
+                                            <th className="px-6 py-4 text-center">D Missed</th>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <th className="px-6 py-4 text-center">Leaves</th>
+                                            <th className="px-6 py-4 text-center">Billable Days</th>
+                                        </>
+                                    )}
                                     <th className="px-6 py-4 text-right font-bold">Final Bill (₹)</th>
                                 </tr>
                             </thead>
@@ -382,8 +479,19 @@ export default function AdminBills() {
                                         <td className="px-6 py-4 font-medium text-gray-900">{student.messNumber}</td>
                                         <td className="px-6 py-4 text-gray-600">{student.name}</td>
                                         <td className="px-6 py-4 text-center text-gray-500">{student.totalDays}</td>
-                                        <td className="px-6 py-4 text-center text-amber-600 font-medium">{student.leaveCount}</td>
-                                        <td className="px-6 py-4 text-center text-green-600 font-medium">{student.billableDays}</td>
+                                        
+                                        {leaveMode === 'per_meal' ? (
+                                            <>
+                                                <td className="px-6 py-4 text-center text-amber-600 font-medium">{student.bMissed}</td>
+                                                <td className="px-6 py-4 text-center text-blue-600 font-medium">{student.lMissed}</td>
+                                                <td className="px-6 py-4 text-center text-purple-600 font-medium">{student.dMissed}</td>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <td className="px-6 py-4 text-center text-amber-600 font-medium">{student.leaveCount}</td>
+                                                <td className="px-6 py-4 text-center text-green-600 font-medium">{student.billableDays}</td>
+                                            </>
+                                        )}
                                         <td className="px-6 py-4 text-right font-bold text-gray-900">₹{student.totalBill.toLocaleString()}</td>
                                     </tr>
                                 ))}
@@ -394,8 +502,19 @@ export default function AdminBills() {
                                     <td className="px-6 py-4" />
                                     <td className="px-6 py-4 font-bold text-gray-900">Grand Total</td>
                                     <td className="px-6 py-4 text-center text-gray-500 font-medium">{totalDays}</td>
-                                    <td className="px-6 py-4 text-center text-amber-600 font-bold">{totalLeaves}</td>
-                                    <td className="px-6 py-4" />
+                                    
+                                    {leaveMode === 'per_meal' ? (
+                                        <>
+                                            <td className="px-6 py-4 text-center text-amber-600 font-bold">{totalBMissed}</td>
+                                            <td className="px-6 py-4 text-center text-blue-600 font-bold">{totalLMissed}</td>
+                                            <td className="px-6 py-4 text-center text-purple-600 font-bold">{totalDMissed}</td>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <td className="px-6 py-4 text-center text-amber-600 font-bold">{totalLeaves}</td>
+                                            <td className="px-6 py-4" />
+                                        </>
+                                    )}
                                     <td className="px-6 py-4 text-right font-bold text-gray-900 text-base">₹{grandTotal.toLocaleString()}</td>
                                 </tr>
                             </tfoot>

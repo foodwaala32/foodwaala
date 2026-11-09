@@ -7,25 +7,47 @@ import toast, { Toaster } from 'react-hot-toast';
 import { supabase } from '../lib/supabaseClient';
 
 export default function AdminSettings() {
-    const { messRate, cutoffTime, hostelName, updateSettings, loading } = useHostel();
+    const { 
+        leaveMode, 
+        breakfastRate, 
+        lunchRate, 
+        dinnerRate, 
+        messRate, 
+        cutoffTime, 
+        hostelName, 
+        updateSettings, 
+        loading 
+    } = useHostel();
 
+    const [mode, setMode] = useState(leaveMode || 'full_day');
     const [rate, setRate] = useState(messRate);
+    const [bRate, setBRate] = useState(breakfastRate || 40);
+    const [lRate, setLRate] = useState(lunchRate || 50);
+    const [dRate, setDRate] = useState(dinnerRate || 50);
     const [cutoff, setCutoff] = useState(cutoffTime);
     const [isSaving, setIsSaving] = useState(false);
     const [isBackingUp, setIsBackingUp] = useState(false);
 
     // Sync state when context loads
     useEffect(() => {
+        setMode(leaveMode || 'full_day');
         setRate(messRate);
+        setBRate(breakfastRate || 40);
+        setLRate(lunchRate || 50);
+        setDRate(dinnerRate || 50);
         setCutoff(cutoffTime);
-    }, [messRate, cutoffTime]);
+    }, [leaveMode, messRate, breakfastRate, lunchRate, dinnerRate, cutoffTime]);
 
     const handleSave = async (e) => {
         e.preventDefault();
         setIsSaving(true);
 
         const result = await updateSettings({
-            messRate: parseInt(rate),
+            leaveMode: mode,
+            messRate: parseInt(rate) || 0,
+            breakfastRate: parseInt(bRate) || 0,
+            lunchRate: parseInt(lRate) || 0,
+            dinnerRate: parseInt(dRate) || 0,
             cutoffTime: parseInt(cutoff),
         });
 
@@ -80,6 +102,8 @@ export default function AdminSettings() {
 
     if (loading) return <div className="p-8">Loading settings...</div>;
 
+    const combinedTotal = (parseInt(bRate) || 0) + (parseInt(lRate) || 0) + (parseInt(dRate) || 0);
+
     return (
         <div className="space-y-8 animate-fade-in max-w-2xl mx-auto">
             <Toaster />
@@ -104,23 +128,100 @@ export default function AdminSettings() {
                 </CardHeader>
                 <CardContent className="p-6 pt-6">
                     <form onSubmit={handleSave} className="space-y-8">
+                        
+                        {/* Leave Mode Selector */}
+                        <div className="space-y-3">
+                            <label className="block text-sm font-semibold text-gray-700">Leave Calculation Model</label>
+                            <div className="flex bg-gray-100/80 p-1 rounded-xl max-w-sm border border-gray-200">
+                                <button
+                                    type="button"
+                                    onClick={() => setMode('full_day')}
+                                    className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all ${
+                                        mode === 'full_day' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                                    }`}
+                                >
+                                    Full-Day
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setMode('per_meal')}
+                                    className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all ${
+                                        mode === 'per_meal' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                                    }`}
+                                >
+                                    Per-Meal
+                                </button>
+                            </div>
+                            <p className="text-xs text-gray-400">
+                                {mode === 'full_day'
+                                    ? 'Leaves apply to the whole day. Single daily rate.'
+                                    : 'Leaves apply to specific meals. Independent rates.'}
+                            </p>
+                        </div>
+
+                        <div className="border-t border-gray-100" />
 
                         {/* Mess Rate */}
-                        <div className="space-y-3">
-                            <label className="block text-sm font-semibold text-gray-700">Daily Mess Rate</label>
-                            <div className="relative max-w-xs">
-                                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-medium text-sm pointer-events-none">₹</span>
-                                <input
-                                    type="number"
-                                    min="0"
-                                    value={rate}
-                                    onChange={(e) => setRate(e.target.value)}
-                                    className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 focus:bg-white transition-all"
-                                    required
-                                />
+                        {mode === 'full_day' ? (
+                            <div className="space-y-3">
+                                <label className="block text-sm font-semibold text-gray-700">Daily Mess Rate</label>
+                                <div className="relative max-w-xs">
+                                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-medium text-sm pointer-events-none">₹</span>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        value={rate}
+                                        onChange={(e) => setRate(e.target.value)}
+                                        className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 focus:bg-white transition-all"
+                                        required
+                                    />
+                                </div>
+                                <p className="text-xs text-gray-400">Amount charged per student per day.</p>
                             </div>
-                            <p className="text-xs text-gray-400">Amount charged per student per day.</p>
-                        </div>
+                        ) : (
+                            <div className="space-y-4">
+                                <label className="block text-sm font-semibold text-gray-700">Per-Meal Rates</label>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs font-medium text-gray-600">Breakfast (₹)</label>
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            value={bRate}
+                                            onChange={(e) => setBRate(e.target.value)}
+                                            className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 focus:bg-white transition-all"
+                                            required
+                                        />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs font-medium text-gray-600">Lunch (₹)</label>
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            value={lRate}
+                                            onChange={(e) => setLRate(e.target.value)}
+                                            className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 focus:bg-white transition-all"
+                                            required
+                                        />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs font-medium text-gray-600">Dinner (₹)</label>
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            value={dRate}
+                                            onChange={(e) => setDRate(e.target.value)}
+                                            className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 focus:bg-white transition-all"
+                                            required
+                                        />
+                                    </div>
+                                </div>
+                                <div className="bg-indigo-50/50 text-indigo-700 px-4 py-3 rounded-lg text-sm font-medium border border-indigo-100 flex items-center gap-2">
+                                    <span>Combined Daily Total:</span>
+                                    <span className="font-bold">₹{combinedTotal}</span>
+                                </div>
+                            </div>
+                        )}
 
                         <div className="border-t border-gray-100" />
 

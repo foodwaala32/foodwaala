@@ -13,14 +13,13 @@ export default function LeaveCalendar({
     leavesUsedThisMonth,
     today,
     cutoffTime,
+    leaveMode = 'full_day',
 }) {
-    // const today = new Date(); // Using today from props
     const monthNames = [
         'January', 'February', 'March', 'April', 'May', 'June',
         'July', 'August', 'September', 'October', 'November', 'December',
     ];
 
-    // First day of month (0=Sun)
     const firstDay = new Date(currentYear, currentMonth, 1).getDay();
     const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
 
@@ -44,7 +43,7 @@ export default function LeaveCalendar({
         const d = new Date(currentYear, currentMonth, day);
         const t = new Date(today);
         t.setDate(t.getDate() + 1);
-        t.setHours(0, 0, 0, 0); // normalize
+        t.setHours(0, 0, 0, 0);
         return (
             d.getFullYear() === t.getFullYear() &&
             d.getMonth() === t.getMonth() &&
@@ -62,12 +61,20 @@ export default function LeaveCalendar({
 
     const getLeaveInfo = (day) => {
         const dateStr = getDateStr(day);
-        // selectedDates is now an array of { date, isAdminGranted } from LeaveSelection
         return selectedDates.find(l => l.date === dateStr);
     };
 
     const isSelected = (day) => {
-        return !!getLeaveInfo(day);
+        const info = getLeaveInfo(day);
+        if (!info) return false;
+        return info.breakfast || info.lunch || info.dinner;
+    };
+
+    const isPartialLeave = (day) => {
+        const info = getLeaveInfo(day);
+        if (!info) return false;
+        const totalMeals = [info.breakfast, info.lunch, info.dinner].filter(Boolean).length;
+        return totalMeals > 0 && totalMeals < 3;
     };
 
     const isAdminLeave = (day) => {
@@ -76,33 +83,20 @@ export default function LeaveCalendar({
 
     const isDisabled = (day) => {
         if (isPastDate(day)) return true;
-
-        // RULE: Cannot apply for leave for today on today itself.
         if (isToday(day)) return true;
-
         const info = getLeaveInfo(day);
-        if (info?.isAdminGranted) return true; // Cannot toggle admin leaves from here
-
-        // CUTOFF RULE: If cutoff passed (8 PM), disable tomorrow as well.
+        if (info?.isAdminGranted) return true;
         if (isTomorrow(day) && isTodayCutoffPassed()) return true;
-
-        // If cap is reached, disable unselected future dates (but allow deselecting)
         if (isCapReached && !info) return true;
         return false;
     };
 
     const handleClick = (day) => {
         if (isPastDate(day)) return;
-
-        // RULE: Cannot apply for leave for today
         if (isToday(day)) return;
-
         if (isTomorrow(day) && isTodayCutoffPassed()) return;
-
         const info = getLeaveInfo(day);
         if (info?.isAdminGranted) return;
-
-        // Allow the toggle — LeaveSelection.jsx handles the cap toast
         onDateToggle(getDateStr(day));
     };
 
@@ -111,7 +105,6 @@ export default function LeaveCalendar({
 
     return (
         <div className="p-4 sm:p-6 bg-white">
-            {/* Navigation */}
             <div className="flex items-center justify-between mb-8">
                 <Button variant="ghost" size="icon" onClick={onPrevMonth}>
                     <ChevronLeft className="w-5 h-5" />
@@ -124,7 +117,6 @@ export default function LeaveCalendar({
                 </Button>
             </div>
 
-            {/* Grid */}
             <div className="grid grid-cols-7 mb-4">
                 {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => (
                     <div key={d} className="text-center text-xs font-semibold text-gray-400 py-2">
@@ -140,7 +132,8 @@ export default function LeaveCalendar({
                 {daysArr.map((day) => {
                     const info = getLeaveInfo(day);
                     const disabled = isDisabled(day);
-                    const selected = !!info;
+                    const selected = isSelected(day);
+                    const partial = leaveMode === 'per_meal' && isPartialLeave(day);
                     const adminGranted = Boolean(info?.isAdminGranted);
                     const todayDate = isToday(day);
                     const cappedOut = isCapReached && !selected && !isPastDate(day) && !(isToday(day) && isTodayCutoffPassed());
@@ -151,11 +144,13 @@ export default function LeaveCalendar({
                             onClick={() => handleClick(day)}
                             disabled={disabled}
                             className={cn(
-                                "aspect-square rounded-lg text-sm font-medium relative transition-all duration-200 border border-transparent",
+                                "aspect-square rounded-lg text-sm font-medium relative transition-all duration-200 border border-transparent flex items-center justify-center",
                                 adminGranted
                                     ? "bg-admin-purple text-white shadow-sm cursor-not-allowed opacity-90"
                                     : selected
-                                        ? "bg-red-500 text-white shadow-sm hover:bg-red-600"
+                                        ? partial
+                                            ? "bg-amber-400 text-white shadow-sm hover:bg-amber-500"
+                                            : "bg-red-500 text-white shadow-sm hover:bg-red-600"
                                         : todayDate
                                             ? "bg-primary-50 text-primary-700 border-primary-100"
                                             : cappedOut
@@ -174,12 +169,17 @@ export default function LeaveCalendar({
                 })}
             </div>
 
-            {/* Legend */}
             <div className="flex flex-wrap justify-center gap-6 mt-8 pt-4 border-t border-gray-100">
                 <div className="flex items-center gap-2">
                     <div className="w-3 h-3 rounded bg-red-500"></div>
                     <span className="text-xs text-gray-500 font-medium">Your Leave</span>
                 </div>
+                {leaveMode === 'per_meal' && (
+                    <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded bg-amber-400"></div>
+                        <span className="text-xs text-gray-500 font-medium">Partial Leave</span>
+                    </div>
+                )}
                 <div className="flex items-center gap-2">
                     <div className="w-3 h-3 rounded bg-admin-purple"></div>
                     <span className="text-xs text-gray-500 font-medium">Admin Granted</span>

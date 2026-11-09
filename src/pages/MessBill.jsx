@@ -9,7 +9,7 @@ import { Separator } from '../components/ui/separator';
 
 export default function MessBill() {
     const { user } = useAuth();
-    const { messRate } = useHostel();
+    const { messRate, leaveMode, breakfastRate, lunchRate, dinnerRate } = useHostel();
 
     const [selectedDate, setSelectedDate] = useState(new Date());
     const [monthLeaves, setMonthLeaves] = useState([]);
@@ -18,35 +18,48 @@ export default function MessBill() {
     if (!user) return <div className="p-8 text-center">Please log in to view bill.</div>;
 
     const now = new Date();
-    
-    // Calculate bill for selected month
-    const currentYear = selectedDate.getFullYear();
-    const currentMonth = selectedDate.getMonth(); // 0-indexed
+    const currentYearNum = now.getFullYear();
+    const currentMonthNum = now.getMonth(); 
 
-    const isCurrentMonth = currentYear === now.getFullYear() && currentMonth === now.getMonth();
+    const START_YEAR = 2026;
+    const START_MONTH = 7; 
+
+    const selectedYear = selectedDate.getFullYear();
+    const selectedMonth = selectedDate.getMonth(); 
+
+    // Allow viewing up to next month
+    const maxFutureDate = new Date(currentYearNum, currentMonthNum + 1, 1);
+    const maxYearNum = maxFutureDate.getFullYear();
+    const maxMonthNum = maxFutureDate.getMonth();
+
+    const isLatestMonth = selectedYear > maxYearNum || (selectedYear === maxYearNum && selectedMonth >= maxMonthNum);
+    const isEarliestMonth = selectedYear < START_YEAR || (selectedYear === START_YEAR && selectedMonth <= START_MONTH);
 
     const handlePrevMonth = () => {
-        setSelectedDate(new Date(currentYear, currentMonth - 1, 1));
+        if (!isEarliestMonth) {
+            setSelectedDate(new Date(selectedYear, selectedMonth - 1, 1));
+        }
     };
 
     const handleNextMonth = () => {
-        setSelectedDate(new Date(currentYear, currentMonth + 1, 1));
+        if (!isLatestMonth) {
+            setSelectedDate(new Date(selectedYear, selectedMonth + 1, 1));
+        }
     };
 
-    // Get total days in current month
-    const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+    const daysInMonth = new Date(selectedYear, selectedMonth + 1, 0).getDate();
 
     useEffect(() => {
         if (!user?.hostelId || !user?.messNumber) return;
 
         const fetchMonthLeaves = async () => {
             setLoadingLeaves(true);
-            const startStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-01`;
-            const endStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
+            const startStr = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-01`;
+            const endStr = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
 
             const { data, error } = await supabase
                 .from('leaves')
-                .select('leave_date')
+                .select('leave_date, breakfast, lunch, dinner')
                 .eq('status', 'Approved')
                 .eq('hostel_id', user.hostelId)
                 .eq('mess_number', user.messNumber)
@@ -57,44 +70,79 @@ export default function MessBill() {
                 console.error(error);
                 setMonthLeaves([]);
             } else {
-                setMonthLeaves(data.map(d => d.leave_date));
+                setMonthLeaves(data);
             }
             setLoadingLeaves(false);
         };
         fetchMonthLeaves();
-    }, [user?.hostelId, user?.messNumber, currentYear, currentMonth, daysInMonth]);
+    }, [user?.hostelId, user?.messNumber, selectedYear, selectedMonth, daysInMonth]);
 
-    // Calculate leaves taken this month
-    let leaveCount = 0;
-    for (let day = 1; day <= daysInMonth; day++) {
-        const dateKey = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-        if (monthLeaves.includes(dateKey)) {
-            leaveCount++;
+    let startDay = 1;
+    if (user?.joinDate) {
+        const [jY, jM, jD] = user.joinDate.split('-').map(Number);
+        if (jY === selectedYear && (jM - 1) === selectedMonth) {
+            startDay = Math.max(1, jD);
+        } else if (jY > selectedYear || (jY === selectedYear && (jM - 1) > selectedMonth)) {
+            startDay = daysInMonth + 1; 
         }
     }
 
-    const activeDays = daysInMonth - leaveCount;
-    const totalAmount = activeDays * messRate;
-    const savings = leaveCount * messRate;
+    const eligibleDays = Math.max(0, daysInMonth - startDay + 1);
+
+    let leaveCount = 0;
+    let breakfastMissed = 0;
+    let lunchMissed = 0;
+    let dinnerMissed = 0;
+
+    for (let day = startDay; day <= daysInMonth; day++) {
+        const dateKey = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const leave = monthLeaves.find(l => l.leave_date === dateKey);
+        
+        if (leave) {
+            if (leaveMode === 'per_meal') {
+                if (leave.breakfast) breakfastMissed++;
+                if (leave.lunch) lunchMissed++;
+                if (leave.dinner) dinnerMissed++;
+            } else {
+                leaveCount++;
+            }
+        }
+    }
+
+    let totalAmount = 0;
+    let savings = 0;
+    let activeDays = 0;
+    
+    const breakfastEaten = Math.max(0, eligibleDays - breakfastMissed);
+    const lunchEaten = Math.max(0, eligibleDays - lunchMissed);
+    const dinnerEaten = Math.max(0, eligibleDays - dinnerMissed);
+
+    if (leaveMode === 'per_meal') {
+        totalAmount = (breakfastEaten * breakfastRate) + (lunchEaten * lunchRate) + (dinnerEaten * dinnerRate);
+        savings = (breakfastMissed * breakfastRate) + (lunchMissed * lunchRate) + (dinnerMissed * dinnerRate);
+    } else {
+        activeDays = Math.max(0, eligibleDays - leaveCount);
+        totalAmount = activeDays * messRate;
+        savings = leaveCount * messRate;
+    }
 
     const monthName = selectedDate.toLocaleString('default', { month: 'long' });
 
     return (
         <div className="space-y-8 animate-fade-in mx-auto max-w-4xl">
-            {/* Header */}
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div>
                     <h1 className="text-3xl font-bold text-gray-900 tracking-tight mb-2">My Monthly Bill</h1>
-                    <p className="text-gray-500 text-lg">Billing details for {monthName} {currentYear}</p>
+                    <p className="text-gray-500 text-lg">Billing details for {monthName} {selectedYear}</p>
                 </div>
                 <div className="flex items-center gap-2">
-                    <Button variant="outline" size="icon" onClick={handlePrevMonth}>
+                    <Button variant="outline" size="icon" onClick={handlePrevMonth} disabled={isEarliestMonth} title={isEarliestMonth ? "Cannot view past months before current month" : "Previous Month"}>
                         <ChevronLeft className="w-4 h-4" />
                     </Button>
                     <div className="font-semibold text-gray-900 min-w-[140px] text-center">
-                        {monthName} {currentYear}
+                        {monthName} {selectedYear}
                     </div>
-                    <Button variant="outline" size="icon" onClick={handleNextMonth} disabled={isCurrentMonth}>
+                    <Button variant="outline" size="icon" onClick={handleNextMonth} disabled={isLatestMonth} title={isLatestMonth ? "Cannot view future months" : "Next Month"}>
                         <ChevronRight className="w-4 h-4" />
                     </Button>
                 </div>
@@ -117,42 +165,73 @@ export default function MessBill() {
                 </CardHeader>
 
                 <CardContent className="p-0">
-                    {/* Breakdown Table */}
-                    <div className="divide-y divide-gray-100">
-                        <div className="grid grid-cols-2 p-4 sm:px-6 hover:bg-gray-50/30 transition-colors">
-                            <span className="text-sm text-gray-500 flex items-center gap-2">
-                                <Calendar className="w-4 h-4" /> Total Days
-                            </span>
-                            <span className="text-sm font-medium text-gray-900 text-right">{daysInMonth} days</span>
-                        </div>
+                    {leaveMode === 'per_meal' ? (
+                        <>
+                            <div className="grid grid-cols-5 p-4 sm:px-6 bg-gray-50/50 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                                <div className="col-span-2">Meal</div>
+                                <div className="text-center">Rate</div>
+                                <div className="text-center">Eaten</div>
+                                <div className="text-right">Subtotal</div>
+                            </div>
+                            <div className="divide-y divide-gray-100">
+                                <div className="grid grid-cols-5 p-4 sm:px-6 items-center hover:bg-gray-50/30 transition-colors">
+                                    <div className="col-span-2 text-sm font-medium text-gray-900">Breakfast</div>
+                                    <div className="text-sm text-gray-500 text-center">₹{breakfastRate}</div>
+                                    <div className="text-sm text-gray-500 text-center">{breakfastEaten} / {eligibleDays}</div>
+                                    <div className="text-sm font-medium text-gray-900 text-right">₹{(breakfastEaten * breakfastRate).toLocaleString()}</div>
+                                </div>
+                                <div className="grid grid-cols-5 p-4 sm:px-6 items-center hover:bg-gray-50/30 transition-colors">
+                                    <div className="col-span-2 text-sm font-medium text-gray-900">Lunch</div>
+                                    <div className="text-sm text-gray-500 text-center">₹{lunchRate}</div>
+                                    <div className="text-sm text-gray-500 text-center">{lunchEaten} / {eligibleDays}</div>
+                                    <div className="text-sm font-medium text-gray-900 text-right">₹{(lunchEaten * lunchRate).toLocaleString()}</div>
+                                </div>
+                                <div className="grid grid-cols-5 p-4 sm:px-6 items-center hover:bg-gray-50/30 transition-colors">
+                                    <div className="col-span-2 text-sm font-medium text-gray-900">Dinner</div>
+                                    <div className="text-sm text-gray-500 text-center">₹{dinnerRate}</div>
+                                    <div className="text-sm text-gray-500 text-center">{dinnerEaten} / {eligibleDays}</div>
+                                    <div className="text-sm font-medium text-gray-900 text-right">₹{(dinnerEaten * dinnerRate).toLocaleString()}</div>
+                                </div>
+                            </div>
+                        </>
+                    ) : (
+                        <div className="divide-y divide-gray-100">
+                            <div className="grid grid-cols-2 p-4 sm:px-6 hover:bg-gray-50/30 transition-colors">
+                                <span className="text-sm text-gray-500 flex items-center gap-2">
+                                    <Calendar className="w-4 h-4" /> Total Days
+                                </span>
+                                <span className="text-sm font-medium text-gray-900 text-right">{daysInMonth} days</span>
+                            </div>
 
-                        <div className="grid grid-cols-2 p-4 sm:px-6 hover:bg-gray-50/30 transition-colors">
-                            <span className="text-sm text-gray-500 flex items-center gap-2">
-                                <Minus className="w-4 h-4 text-red-500" /> Leave Days
-                            </span>
-                            <span className="text-sm font-medium text-red-600 text-right">− {leaveCount} days</span>
-                        </div>
+                            <div className="grid grid-cols-2 p-4 sm:px-6 hover:bg-gray-50/30 transition-colors">
+                                <span className="text-sm text-gray-500 flex items-center gap-2">
+                                    <Minus className="w-4 h-4 text-red-500" /> Leave Days
+                                </span>
+                                <span className="text-sm font-medium text-red-600 text-right">− {leaveCount} days</span>
+                            </div>
 
-                        <div className="grid grid-cols-2 p-4 sm:px-6 hover:bg-gray-50/30 transition-colors bg-blue-50/10">
-                            <span className="text-sm text-gray-500 flex items-center gap-2">
-                                <CheckCircle2 className="w-4 h-4 text-primary-600" /> Billable Days
-                            </span>
-                            <span className="text-sm font-semibold text-primary-700 text-right">{activeDays} days</span>
-                        </div>
+                            <div className="grid grid-cols-2 p-4 sm:px-6 hover:bg-gray-50/30 transition-colors bg-blue-50/10">
+                                <span className="text-sm text-gray-500 flex items-center gap-2">
+                                    <CheckCircle2 className="w-4 h-4 text-primary-600" /> Billable Days
+                                </span>
+                                <span className="text-sm font-semibold text-primary-700 text-right">{activeDays} days</span>
+                            </div>
 
-                        <div className="grid grid-cols-2 p-4 sm:px-6 hover:bg-gray-50/30 transition-colors">
-                            <span className="text-sm text-gray-500">Cost per day</span>
-                            <span className="text-sm font-medium text-gray-900 text-right">₹{messRate}</span>
+                            <div className="grid grid-cols-2 p-4 sm:px-6 hover:bg-gray-50/30 transition-colors">
+                                <span className="text-sm text-gray-500">Cost per day</span>
+                                <span className="text-sm font-medium text-gray-900 text-right">₹{messRate}</span>
+                            </div>
                         </div>
-                    </div>
+                    )}
 
                     <Separator />
 
-                    {/* Calculation Footer */}
                     <div className="bg-gray-50/30 p-4 sm:px-6 text-center">
-                        <p className="text-xs text-gray-400 font-mono">
-                            ({daysInMonth} Total − {leaveCount} Leave) × ₹{messRate} = ₹{totalAmount.toLocaleString()}
-                        </p>
+                        {leaveMode === 'full_day' && (
+                            <p className="text-xs text-gray-400 font-mono">
+                                ({daysInMonth} Total − {leaveCount} Leave) × ₹{messRate} = ₹{totalAmount.toLocaleString()}
+                            </p>
+                        )}
                         {savings > 0 && (
                             <p className="text-xs text-emerald-600 font-medium mt-1">
                                 You saved ₹{savings.toLocaleString()} this month on leaves
@@ -161,8 +240,6 @@ export default function MessBill() {
                     </div>
                 </CardContent>
             </Card>
-
-            {/* Pay Now button removed */}
         </div>
     );
 }
