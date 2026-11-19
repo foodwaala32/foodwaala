@@ -1,23 +1,29 @@
-import { Coffee, Sun, Moon } from 'lucide-react';
+import { Coffee, Sun, Moon, Cookie } from 'lucide-react';
 
 const mealIcons = {
     breakfast: Coffee,
     lunch: Sun,
+    evening: Cookie,
+    snack: Cookie,
     dinner: Moon,
 };
 
 const mealColors = {
     breakfast: { bg: 'bg-amber-50', border: 'border-amber-200', icon: 'text-amber-500', badge: 'bg-amber-100 text-amber-700' },
     lunch: { bg: 'bg-orange-50', border: 'border-orange-200', icon: 'text-orange-500', badge: 'bg-orange-100 text-orange-700' },
+    evening: { bg: 'bg-pink-50', border: 'border-pink-200', icon: 'text-pink-500', badge: 'bg-pink-100 text-pink-700' },
+    snack: { bg: 'bg-pink-50', border: 'border-pink-200', icon: 'text-pink-500', badge: 'bg-pink-100 text-pink-700' },
     dinner: { bg: 'bg-indigo-50', border: 'border-indigo-200', icon: 'text-indigo-500', badge: 'bg-indigo-100 text-indigo-700' },
 };
 
 export default function WeeklyMenu({ dayMenu }) {
     if (!dayMenu) return null;
 
+    const mealsToDisplay = ['breakfast', 'lunch', dayMenu.evening ? 'evening' : (dayMenu.snack ? 'snack' : null), 'dinner'].filter(Boolean);
+
     return (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {['breakfast', 'lunch', 'dinner'].map((meal) => {
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {mealsToDisplay.map((meal) => {
                 const Icon = mealIcons[meal];
                 const colors = mealColors[meal];
 

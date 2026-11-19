@@ -22,9 +22,10 @@ export default function Dashboard() {
         if (leaveMode === 'per_meal') {
             if (leaveDetail.breakfast) partialMeals.push('Breakfast');
             if (leaveDetail.lunch) partialMeals.push('Lunch');
+            if (leaveDetail.evening) partialMeals.push('Evening');
             if (leaveDetail.dinner) partialMeals.push('Dinner');
             
-            if (partialMeals.length === 3) {
+            if (partialMeals.length === 4) {
                 isFullLeave = true;
                 partialMeals = [];
             }

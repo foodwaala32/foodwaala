@@ -12,7 +12,7 @@ import { useHostel } from '../context/HostelContext';
 export default function LeaveSelection() {
     const { user } = useAuth();
     const { getLeavesByDate, addLeave, removeLeave, leaves } = useLeaves();
-    const { cutoffTime, maxLeaves, leaveMode, breakfastRate, lunchRate, dinnerRate } = useHostel();
+    const { cutoffTime, maxLeaves, leaveMode, breakfastRate, lunchRate, eveningRate, dinnerRate } = useHostel();
     const isUnlimited = maxLeaves === null;
 
     const [today, setToday] = useState(new Date());
@@ -31,7 +31,7 @@ export default function LeaveSelection() {
     
     // Meal Modal State
     const [mealModalDate, setMealModalDate] = useState(null);
-    const [mealSelection, setMealSelection] = useState({ breakfast: false, lunch: false, dinner: false });
+    const [mealSelection, setMealSelection] = useState({ breakfast: false, lunch: false, evening: false, dinner: false });
 
     // Initial load from DB
     useEffect(() => {
@@ -44,6 +44,7 @@ export default function LeaveSelection() {
                     isAdminGranted: myRecord.isAdminGranted,
                     breakfast: myRecord.breakfast ?? true,
                     lunch: myRecord.lunch ?? true,
+                    evening: myRecord.evening ?? true,
                     dinner: myRecord.dinner ?? true
                 });
             }
@@ -58,7 +59,7 @@ export default function LeaveSelection() {
         if (l.isAdminGranted) return false;
         const d = new Date(l.date + 'T00:00:00');
         // A leave counts if ANY meal is on leave
-        const isLeaveActive = leaveMode === 'per_meal' ? (l.breakfast || l.lunch || l.dinner) : true;
+        const isLeaveActive = leaveMode === 'per_meal' ? (l.breakfast || l.lunch || l.evening || l.dinner) : true;
         return d.getMonth() === currentMonth && d.getFullYear() === currentYear && isLeaveActive;
     }).length;
 
@@ -95,6 +96,7 @@ export default function LeaveSelection() {
                 setMealSelection({
                     breakfast: existingRecord.breakfast,
                     lunch: existingRecord.lunch,
+                    evening: existingRecord.evening,
                     dinner: existingRecord.dinner
                 });
             } else {
@@ -108,7 +110,7 @@ export default function LeaveSelection() {
                         return;
                     }
                 }
-                setMealSelection({ breakfast: true, lunch: true, dinner: true });
+                setMealSelection({ breakfast: true, lunch: true, evening: true, dinner: true });
             }
             setMealModalDate(dateStr);
         } else {
@@ -130,14 +132,14 @@ export default function LeaveSelection() {
             setSelectedDates((prev) =>
                 isRemoving
                     ? prev.filter((l) => l.date !== dateStr)
-                    : [...prev, { date: dateStr, isAdminGranted: false, breakfast: true, lunch: true, dinner: true }].sort((a, b) => a.date.localeCompare(b.date))
+                    : [...prev, { date: dateStr, isAdminGranted: false, breakfast: true, lunch: true, evening: true, dinner: true }].sort((a, b) => a.date.localeCompare(b.date))
             );
         }
     };
 
     const handleMealModalConfirm = () => {
         setPendingChanges(true);
-        if (!mealSelection.breakfast && !mealSelection.lunch && !mealSelection.dinner) {
+        if (!mealSelection.breakfast && !mealSelection.lunch && !mealSelection.evening && !mealSelection.dinner) {
             setSelectedDates(prev => prev.filter(l => l.date !== mealModalDate));
         } else {
             setSelectedDates(prev => {
@@ -187,6 +189,7 @@ export default function LeaveSelection() {
                     isAdminGranted: myRecord.isAdminGranted,
                     breakfast: myRecord.breakfast ?? true,
                     lunch: myRecord.lunch ?? true,
+                    evening: myRecord.evening ?? true,
                     dinner: myRecord.dinner ?? true
                 });
             }
@@ -199,7 +202,7 @@ export default function LeaveSelection() {
         for (const sel of selectedDates) {
             const dbRecord = currentDbEntries.find(db => db.date === sel.date);
             if (!dbRecord || 
-                (leaveMode === 'per_meal' && (dbRecord.breakfast !== sel.breakfast || dbRecord.lunch !== sel.lunch || dbRecord.dinner !== sel.dinner))) {
+                (leaveMode === 'per_meal' && (dbRecord.breakfast !== sel.breakfast || dbRecord.lunch !== sel.lunch || dbRecord.evening !== sel.evening || dbRecord.dinner !== sel.dinner))) {
                 toProcess.push({ type: 'add_or_update', record: sel });
             }
         }
@@ -239,7 +242,7 @@ export default function LeaveSelection() {
 
             for (const { type, record } of toProcess) {
                 if (type === 'add_or_update') {
-                    const meals = leaveMode === 'per_meal' ? { breakfast: record.breakfast, lunch: record.lunch, dinner: record.dinner } : { breakfast: true, lunch: true, dinner: true };
+                    const meals = leaveMode === 'per_meal' ? { breakfast: record.breakfast, lunch: record.lunch, evening: record.evening, dinner: record.dinner } : { breakfast: true, lunch: true, evening: true, dinner: true };
                     await addLeave(user.messNumber, record.date, user.id, false, meals);
                 } else if (type === 'remove') {
                     await removeLeave(user.messNumber, record.date);
@@ -305,6 +308,13 @@ export default function LeaveSelection() {
                                     </div>
                                 </label>
                                 <label className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
+                                    <input type="checkbox" className="w-5 h-5 text-primary-600 rounded" checked={mealSelection.evening} onChange={(e) => setMealSelection(s => ({ ...s, evening: e.target.checked }))} />
+                                    <div className="flex-1 flex justify-between">
+                                        <span className="font-medium">Evening</span>
+                                        <span className="text-gray-500 text-sm">₹{eveningRate}</span>
+                                    </div>
+                                </label>
+                                <label className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
                                     <input type="checkbox" className="w-5 h-5 text-primary-600 rounded" checked={mealSelection.dinner} onChange={(e) => setMealSelection(s => ({ ...s, dinner: e.target.checked }))} />
                                     <div className="flex-1 flex justify-between">
                                         <span className="font-medium">Dinner</span>
@@ -314,7 +324,7 @@ export default function LeaveSelection() {
                             </div>
                             
                             <div className="flex justify-between mt-4">
-                                <Button variant="outline" size="sm" onClick={() => setMealSelection({ breakfast: true, lunch: true, dinner: true })}>
+                                <Button variant="outline" size="sm" onClick={() => setMealSelection({ breakfast: true, lunch: true, evening: true, dinner: true })}>
                                     Select All
                                 </Button>
                             </div>
@@ -467,6 +477,7 @@ export default function LeaveSelection() {
                                                 <div className="flex gap-1 mt-1">
                                                     {entry.breakfast && <Badge variant="outline" className="text-xs bg-white text-gray-600">B</Badge>}
                                                     {entry.lunch && <Badge variant="outline" className="text-xs bg-white text-gray-600">L</Badge>}
+                                                    {entry.evening && <Badge variant="outline" className="text-xs bg-white text-gray-600">E</Badge>}
                                                     {entry.dinner && <Badge variant="outline" className="text-xs bg-white text-gray-600">D</Badge>}
                                                 </div>
                                             )}

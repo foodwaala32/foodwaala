@@ -13,7 +13,7 @@ import { saveAs } from 'file-saver';
 export default function AdminBills() {
     const { user } = useAuth();
     const { students } = useStudents();
-    const { messRate, leaveMode, breakfastRate, lunchRate, dinnerRate } = useHostel();
+    const { messRate, leaveMode, breakfastRate, lunchRate, eveningRate, dinnerRate } = useHostel();
 
     const now = new Date();
     const START_MONTH_STR = '2026-08';
@@ -77,7 +77,7 @@ export default function AdminBills() {
             while (keepFetching) {
                 const { data, error } = await supabase
                     .from('leaves')
-                    .select('leave_date, mess_number, breakfast, lunch, dinner')
+                    .select('leave_date, mess_number, breakfast, lunch, evening, dinner')
                     .eq('status', 'Approved')
                     .eq('hostel_id', user.hostelId)
                     .gte('leave_date', sDate)
@@ -101,6 +101,7 @@ export default function AdminBills() {
                     messNumber: record.mess_number,
                     breakfast: record.breakfast,
                     lunch: record.lunch,
+                    evening: record.evening,
                     dinner: record.dinner
                 });
             });
@@ -121,7 +122,9 @@ export default function AdminBills() {
         let leaveCount = 0; // used for full_day
         let bMissed = 0; // used for per_meal
         let lMissed = 0;
+        let eMissed = 0;
         let dMissed = 0;
+        let totalBill = 0;
 
         dateRange.forEach(dateKey => {
             if (student.joinDate && dateKey < student.joinDate) {
@@ -131,23 +134,41 @@ export default function AdminBills() {
 
             const leavesOnDay = rangeLeaves[dateKey] || [];
             const studentLeave = leavesOnDay.find(l => l.messNumber === student.messNumber);
-            if (studentLeave) {
-                leaveCount++;
-                if (studentLeave.breakfast) bMissed++;
-                if (studentLeave.lunch) lMissed++;
-                if (studentLeave.dinner) dMissed++;
+            if (leaveMode === 'per_meal') {
+                const isBMissed = studentLeave?.breakfast || false;
+                const isLMissed = studentLeave?.lunch || false;
+                const isEMissed = studentLeave?.evening || false;
+                const isDMissed = studentLeave?.dinner || false;
+
+                if (isBMissed) bMissed++;
+                if (isLMissed) lMissed++;
+                if (isEMissed) eMissed++;
+                if (isDMissed) dMissed++;
+
+                const bEaten = !isBMissed;
+                const lEaten = !isLMissed;
+                const eEaten = !isEMissed;
+                const dEaten = !isDMissed;
+
+                if (bEaten && lEaten && eEaten && dEaten) {
+                    totalBill += 130;
+                } else {
+                    let dayAmount = 0;
+                    if (bEaten) dayAmount += breakfastRate;
+                    if (lEaten) dayAmount += lunchRate;
+                    if (eEaten) dayAmount += eveningRate;
+                    if (dEaten) dayAmount += dinnerRate;
+                    totalBill += dayAmount;
+                }
+            } else {
+                if (studentLeave) {
+                    leaveCount++;
+                }
             }
         });
 
         let billableDays = 0;
-        let totalBill = 0;
-
-        if (leaveMode === 'per_meal') {
-            const bEaten = Math.max(0, studentTotalDays - bMissed);
-            const lEaten = Math.max(0, studentTotalDays - lMissed);
-            const dEaten = Math.max(0, studentTotalDays - dMissed);
-            totalBill = (bEaten * breakfastRate) + (lEaten * lunchRate) + (dEaten * dinnerRate);
-        } else {
+        if (leaveMode !== 'per_meal') {
             billableDays = Math.max(0, studentTotalDays - leaveCount);
             totalBill = billableDays * messRate;
         }
@@ -159,6 +180,7 @@ export default function AdminBills() {
             billableDays,
             bMissed,
             lMissed,
+            eMissed,
             dMissed,
             totalBill,
         };
@@ -169,6 +191,7 @@ export default function AdminBills() {
     const totalLeaves = studentBills.reduce((sum, s) => sum + s.leaveCount, 0);
     const totalBMissed = studentBills.reduce((sum, s) => sum + s.bMissed, 0);
     const totalLMissed = studentBills.reduce((sum, s) => sum + s.lMissed, 0);
+    const totalEMissed = studentBills.reduce((sum, s) => sum + s.eMissed, 0);
     const totalDMissed = studentBills.reduce((sum, s) => sum + s.dMissed, 0);
 
     const handleDownloadExcel = () => {
@@ -182,6 +205,7 @@ export default function AdminBills() {
                 'Total Days': s.totalDays,
                 'B Missed': s.bMissed,
                 'L Missed': s.lMissed,
+                'E Missed': s.eMissed,
                 'D Missed': s.dMissed,
                 'Total Bill (\u20B9)': s.totalBill,
             }));
@@ -191,6 +215,7 @@ export default function AdminBills() {
                 'Total Days': '',
                 'B Missed': totalBMissed,
                 'L Missed': totalLMissed,
+                'E Missed': totalEMissed,
                 'D Missed': totalDMissed,
                 'Total Bill (\u20B9)': grandTotal,
             });
@@ -200,6 +225,7 @@ export default function AdminBills() {
                 { wch: 12 }, // Total Days
                 { wch: 10 }, // B Missed
                 { wch: 10 }, // L Missed
+                { wch: 10 }, // E Missed
                 { wch: 10 }, // D Missed
                 { wch: 16 }, // Total Bill
             ];
@@ -272,8 +298,9 @@ export default function AdminBills() {
                             const meals = [];
                             if (studentLeave.breakfast) meals.push('B');
                             if (studentLeave.lunch) meals.push('L');
+                            if (studentLeave.evening) meals.push('E');
                             if (studentLeave.dinner) meals.push('D');
-                            row[dayHeader] = meals.length === 3 ? 'BLD' : meals.join('');
+                            row[dayHeader] = meals.length === 4 ? 'BLED' : meals.join('');
                         } else {
                             row[dayHeader] = 'L';
                         }
@@ -445,7 +472,7 @@ export default function AdminBills() {
                     <CardTitle className="text-lg">Bill Summary — {periodLabel}</CardTitle>
                     <CardDescription>
                         {leaveMode === 'per_meal' 
-                            ? `Rates: Breakfast ₹${breakfastRate}, Lunch ₹${lunchRate}, Dinner ₹${dinnerRate}`
+                            ? `Rates: Breakfast ₹${breakfastRate}, Lunch ₹${lunchRate}, Evening ₹${eveningRate}, Dinner ₹${dinnerRate} (All 4 meals: ₹130/day)`
                             : `Rate: ₹${messRate}/day`}
                     </CardDescription>
                 </CardHeader>
@@ -462,6 +489,7 @@ export default function AdminBills() {
                                         <>
                                             <th className="px-6 py-4 text-center">B Missed</th>
                                             <th className="px-6 py-4 text-center">L Missed</th>
+                                            <th className="px-6 py-4 text-center">E Missed</th>
                                             <th className="px-6 py-4 text-center">D Missed</th>
                                         </>
                                     ) : (
@@ -484,6 +512,7 @@ export default function AdminBills() {
                                             <>
                                                 <td className="px-6 py-4 text-center text-amber-600 font-medium">{student.bMissed}</td>
                                                 <td className="px-6 py-4 text-center text-blue-600 font-medium">{student.lMissed}</td>
+                                                <td className="px-6 py-4 text-center text-pink-600 font-medium">{student.eMissed}</td>
                                                 <td className="px-6 py-4 text-center text-purple-600 font-medium">{student.dMissed}</td>
                                             </>
                                         ) : (
@@ -507,6 +536,7 @@ export default function AdminBills() {
                                         <>
                                             <td className="px-6 py-4 text-center text-amber-600 font-bold">{totalBMissed}</td>
                                             <td className="px-6 py-4 text-center text-blue-600 font-bold">{totalLMissed}</td>
+                                            <td className="px-6 py-4 text-center text-pink-600 font-bold">{totalEMissed}</td>
                                             <td className="px-6 py-4 text-center text-purple-600 font-bold">{totalDMissed}</td>
                                         </>
                                     ) : (

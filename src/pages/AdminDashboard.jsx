@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Skeleton } from '../components/ui/skeleton';
-import { Users, AlertCircle, UtensilsCrossed, Coffee, Soup } from 'lucide-react';
+import { Users, AlertCircle, UtensilsCrossed, Coffee, Soup, Cookie } from 'lucide-react';
 import { useStudents } from '../context/StudentContext';
 import { useLeaves } from '../context/LeaveContext';
 import { useHostel } from '../context/HostelContext';
@@ -26,6 +26,7 @@ export default function AdminDashboard() {
     // Per-meal calculations
     const breakfastLeaves = todayLeaves.filter(l => l.breakfast).length;
     const lunchLeaves = todayLeaves.filter(l => l.lunch).length;
+    const eveningLeaves = todayLeaves.filter(l => l.evening).length;
     const dinnerLeaves = todayLeaves.filter(l => l.dinner).length;
 
     const stats = leaveMode === 'per_meal' ? [
@@ -50,6 +51,14 @@ export default function AdminDashboard() {
             value: totalStudents - lunchLeaves,
             desc: `${lunchLeaves} on leave`,
             icon: Soup,
+            color: 'text-emerald-600',
+            bg: 'bg-emerald-50'
+        },
+        {
+            label: 'Evening Today',
+            value: totalStudents - eveningLeaves,
+            desc: `${eveningLeaves} on leave`,
+            icon: Cookie,
             color: 'text-emerald-600',
             bg: 'bg-emerald-50'
         },

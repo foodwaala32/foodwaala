@@ -148,7 +148,7 @@ export default function ManageLeaves() {
                     status: 'Approved',
                     hostel_id: user.hostelId,
                     is_admin_granted: true,
-                    ...(leaveMode === 'per_meal' && { breakfast: true, lunch: true, dinner: true })
+                    ...(leaveMode === 'per_meal' && { breakfast: true, lunch: true, evening: true, dinner: true })
                 }))
             );
 
@@ -201,7 +201,7 @@ export default function ManageLeaves() {
                 status: 'Approved',
                 hostel_id: user.hostelId,
                 is_admin_granted: true,
-                ...(leaveMode === 'per_meal' && { breakfast: true, lunch: true, dinner: true })
+                ...(leaveMode === 'per_meal' && { breakfast: true, lunch: true, evening: true, dinner: true })
             }));
 
             const { error } = await supabase
@@ -293,7 +293,7 @@ export default function ManageLeaves() {
                                                 
                                                 let mealsContent = null;
                                                 if (leaveMode === 'per_meal') {
-                                                    const isFullDay = leaf.breakfast && leaf.lunch && leaf.dinner;
+                                                    const isFullDay = leaf.breakfast && leaf.lunch && leaf.evening && leaf.dinner;
                                                     if (isFullDay) {
                                                         mealsContent = <Badge variant="secondary">Full Day</Badge>;
                                                     } else {
@@ -301,6 +301,7 @@ export default function ManageLeaves() {
                                                             <div className="flex gap-1">
                                                                 {leaf.breakfast && <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-200">B</Badge>}
                                                                 {leaf.lunch && <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-200">L</Badge>}
+                                                                {leaf.evening && <Badge className="bg-pink-100 text-pink-800 hover:bg-pink-200">E</Badge>}
                                                                 {leaf.dinner && <Badge className="bg-purple-100 text-purple-800 hover:bg-purple-200">D</Badge>}
                                                             </div>
                                                         );

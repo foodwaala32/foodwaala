@@ -67,14 +67,14 @@ export default function LeaveCalendar({
     const isSelected = (day) => {
         const info = getLeaveInfo(day);
         if (!info) return false;
-        return info.breakfast || info.lunch || info.dinner;
+        return info.breakfast || info.lunch || info.evening || info.dinner;
     };
 
     const isPartialLeave = (day) => {
         const info = getLeaveInfo(day);
         if (!info) return false;
-        const totalMeals = [info.breakfast, info.lunch, info.dinner].filter(Boolean).length;
-        return totalMeals > 0 && totalMeals < 3;
+        const totalMeals = [info.breakfast, info.lunch, info.evening, info.dinner].filter(Boolean).length;
+        return totalMeals > 0 && totalMeals < 4;
     };
 
     const isAdminLeave = (day) => {

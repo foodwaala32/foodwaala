@@ -8,6 +8,7 @@ ALTER TABLE public.hostels
   ADD COLUMN IF NOT EXISTS leave_mode TEXT NOT NULL DEFAULT 'full_day',
   ADD COLUMN IF NOT EXISTS breakfast_rate INTEGER NOT NULL DEFAULT 40,
   ADD COLUMN IF NOT EXISTS lunch_rate INTEGER NOT NULL DEFAULT 50,
+  ADD COLUMN IF NOT EXISTS evening_rate INTEGER NOT NULL DEFAULT 20,
   ADD COLUMN IF NOT EXISTS dinner_rate INTEGER NOT NULL DEFAULT 50;
 
 -- Add check constraint for leave_mode values
@@ -26,13 +27,14 @@ END $$;
 ALTER TABLE public.leaves
   ADD COLUMN IF NOT EXISTS breakfast BOOLEAN NOT NULL DEFAULT true,
   ADD COLUMN IF NOT EXISTS lunch BOOLEAN NOT NULL DEFAULT true,
+  ADD COLUMN IF NOT EXISTS evening BOOLEAN NOT NULL DEFAULT true,
   ADD COLUMN IF NOT EXISTS dinner BOOLEAN NOT NULL DEFAULT true;
 
 -- 3. Backfill: ensure all existing leave records have all meals set to true
 -- (This is a no-op if DEFAULT was applied, but ensures safety for any NULLs)
 UPDATE public.leaves
-SET breakfast = true, lunch = true, dinner = true
-WHERE breakfast IS NULL OR lunch IS NULL OR dinner IS NULL;
+SET breakfast = true, lunch = true, evening = true, dinner = true
+WHERE breakfast IS NULL OR lunch IS NULL OR evening IS NULL OR dinner IS NULL;
 
 -- Verify migration
 SELECT 'Hostels columns:' AS info;

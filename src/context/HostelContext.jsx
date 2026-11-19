@@ -14,6 +14,7 @@ export function HostelProvider({ children }) {
         leaveMode: 'full_day', // 'full_day' or 'per_meal'
         breakfastRate: 40,
         lunchRate: 50,
+        eveningRate: 20,
         dinnerRate: 50,
         loading: true,
     });
@@ -28,7 +29,7 @@ export function HostelProvider({ children }) {
             try {
                 const { data, error } = await supabase
                     .from('hostels')
-                    .select('name, mess_rate, cutoff_time, leave_mode, breakfast_rate, lunch_rate, dinner_rate')
+                    .select('name, mess_rate, cutoff_time, leave_mode, breakfast_rate, lunch_rate, evening_rate, dinner_rate')
                     .eq('id', user.hostelId)
                     .single();
 
@@ -48,6 +49,7 @@ export function HostelProvider({ children }) {
                         leaveMode: data.leave_mode || 'full_day',
                         breakfastRate: data.breakfast_rate ?? 40,
                         lunchRate: data.lunch_rate ?? 50,
+                        eveningRate: data.evening_rate ?? 20,
                         dinnerRate: data.dinner_rate ?? 50,
                         loading: false,
                     });
@@ -81,6 +83,9 @@ export function HostelProvider({ children }) {
             if (newSettings.lunchRate !== undefined) {
                 updatePayload.lunch_rate = newSettings.lunchRate;
             }
+            if (newSettings.eveningRate !== undefined) {
+                updatePayload.evening_rate = newSettings.eveningRate;
+            }
             if (newSettings.dinnerRate !== undefined) {
                 updatePayload.dinner_rate = newSettings.dinnerRate;
             }
@@ -100,6 +105,7 @@ export function HostelProvider({ children }) {
                 ...(newSettings.leaveMode !== undefined && { leaveMode: newSettings.leaveMode }),
                 ...(newSettings.breakfastRate !== undefined && { breakfastRate: newSettings.breakfastRate }),
                 ...(newSettings.lunchRate !== undefined && { lunchRate: newSettings.lunchRate }),
+                ...(newSettings.eveningRate !== undefined && { eveningRate: newSettings.eveningRate }),
                 ...(newSettings.dinnerRate !== undefined && { dinnerRate: newSettings.dinnerRate }),
             }));
 

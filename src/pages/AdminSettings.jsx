@@ -11,6 +11,7 @@ export default function AdminSettings() {
         leaveMode, 
         breakfastRate, 
         lunchRate, 
+        eveningRate,
         dinnerRate, 
         messRate, 
         cutoffTime, 
@@ -23,6 +24,7 @@ export default function AdminSettings() {
     const [rate, setRate] = useState(messRate);
     const [bRate, setBRate] = useState(breakfastRate || 40);
     const [lRate, setLRate] = useState(lunchRate || 50);
+    const [eRate, setERate] = useState(eveningRate || 20);
     const [dRate, setDRate] = useState(dinnerRate || 50);
     const [cutoff, setCutoff] = useState(cutoffTime);
     const [isSaving, setIsSaving] = useState(false);
@@ -34,9 +36,10 @@ export default function AdminSettings() {
         setRate(messRate);
         setBRate(breakfastRate || 40);
         setLRate(lunchRate || 50);
+        setERate(eveningRate || 20);
         setDRate(dinnerRate || 50);
         setCutoff(cutoffTime);
-    }, [leaveMode, messRate, breakfastRate, lunchRate, dinnerRate, cutoffTime]);
+    }, [leaveMode, messRate, breakfastRate, lunchRate, eveningRate, dinnerRate, cutoffTime]);
 
     const handleSave = async (e) => {
         e.preventDefault();
@@ -47,6 +50,7 @@ export default function AdminSettings() {
             messRate: parseInt(rate) || 0,
             breakfastRate: parseInt(bRate) || 0,
             lunchRate: parseInt(lRate) || 0,
+            eveningRate: parseInt(eRate) || 0,
             dinnerRate: parseInt(dRate) || 0,
             cutoffTime: parseInt(cutoff),
         });
@@ -102,7 +106,7 @@ export default function AdminSettings() {
 
     if (loading) return <div className="p-8">Loading settings...</div>;
 
-    const combinedTotal = (parseInt(bRate) || 0) + (parseInt(lRate) || 0) + (parseInt(dRate) || 0);
+    const combinedTotal = (parseInt(bRate) || 0) + (parseInt(lRate) || 0) + (parseInt(eRate) || 0) + (parseInt(dRate) || 0);
 
     return (
         <div className="space-y-8 animate-fade-in max-w-2xl mx-auto">
@@ -181,7 +185,7 @@ export default function AdminSettings() {
                         ) : (
                             <div className="space-y-4">
                                 <label className="block text-sm font-semibold text-gray-700">Per-Meal Rates</label>
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
                                     <div className="space-y-1.5">
                                         <label className="text-xs font-medium text-gray-600">Breakfast (₹)</label>
                                         <input
@@ -205,6 +209,17 @@ export default function AdminSettings() {
                                         />
                                     </div>
                                     <div className="space-y-1.5">
+                                        <label className="text-xs font-medium text-gray-600">Evening (₹)</label>
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            value={eRate}
+                                            onChange={(e) => setERate(e.target.value)}
+                                            className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 focus:bg-white transition-all"
+                                            required
+                                        />
+                                    </div>
+                                    <div className="space-y-1.5">
                                         <label className="text-xs font-medium text-gray-600">Dinner (₹)</label>
                                         <input
                                             type="number"
@@ -216,9 +231,14 @@ export default function AdminSettings() {
                                         />
                                     </div>
                                 </div>
-                                <div className="bg-indigo-50/50 text-indigo-700 px-4 py-3 rounded-lg text-sm font-medium border border-indigo-100 flex items-center gap-2">
-                                    <span>Combined Daily Total:</span>
-                                    <span className="font-bold">₹{combinedTotal}</span>
+                                <div className="bg-indigo-50/50 text-indigo-700 px-4 py-3 rounded-lg text-sm font-medium border border-indigo-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2">
+                                        <span>Sum of Individual Meals:</span>
+                                        <span className="font-bold">₹{combinedTotal}</span>
+                                    </div>
+                                    <div className="text-xs bg-indigo-100 px-2.5 py-1 rounded-full text-indigo-800 font-semibold self-start sm:self-auto">
+                                        All 4 Meals (Full Day): ₹130
+                                    </div>
                                 </div>
                             </div>
                         )}

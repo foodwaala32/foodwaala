@@ -9,7 +9,7 @@ import { Separator } from '../components/ui/separator';
 
 export default function MessBill() {
     const { user } = useAuth();
-    const { messRate, leaveMode, breakfastRate, lunchRate, dinnerRate } = useHostel();
+    const { messRate, leaveMode, breakfastRate, lunchRate, eveningRate, dinnerRate } = useHostel();
 
     const [selectedDate, setSelectedDate] = useState(new Date());
     const [monthLeaves, setMonthLeaves] = useState([]);
@@ -59,7 +59,7 @@ export default function MessBill() {
 
             const { data, error } = await supabase
                 .from('leaves')
-                .select('leave_date, breakfast, lunch, dinner')
+                .select('leave_date, breakfast, lunch, evening, dinner')
                 .eq('status', 'Approved')
                 .eq('hostel_id', user.hostelId)
                 .eq('mess_number', user.messNumber)
@@ -92,34 +92,76 @@ export default function MessBill() {
     let leaveCount = 0;
     let breakfastMissed = 0;
     let lunchMissed = 0;
+    let eveningMissed = 0;
     let dinnerMissed = 0;
+    let allMealsDays = 0;
+    let partialBreakfastEaten = 0;
+    let partialLunchEaten = 0;
+    let partialEveningEaten = 0;
+    let partialDinnerEaten = 0;
+    let totalAmount = 0;
 
     for (let day = startDay; day <= daysInMonth; day++) {
         const dateKey = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
         const leave = monthLeaves.find(l => l.leave_date === dateKey);
         
-        if (leave) {
-            if (leaveMode === 'per_meal') {
-                if (leave.breakfast) breakfastMissed++;
-                if (leave.lunch) lunchMissed++;
-                if (leave.dinner) dinnerMissed++;
+        if (leaveMode === 'per_meal') {
+            const isBMissed = leave?.breakfast || false;
+            const isLMissed = leave?.lunch || false;
+            const isEMissed = leave?.evening || false;
+            const isDMissed = leave?.dinner || false;
+
+            if (isBMissed) breakfastMissed++;
+            if (isLMissed) lunchMissed++;
+            if (isEMissed) eveningMissed++;
+            if (isDMissed) dinnerMissed++;
+
+            const bEaten = !isBMissed;
+            const lEaten = !isLMissed;
+            const eEaten = !isEMissed;
+            const dEaten = !isDMissed;
+
+            if (bEaten && lEaten && eEaten && dEaten) {
+                allMealsDays++;
+                totalAmount += 130;
             } else {
+                let dayAmount = 0;
+                if (bEaten) {
+                    dayAmount += breakfastRate;
+                    partialBreakfastEaten++;
+                }
+                if (lEaten) {
+                    dayAmount += lunchRate;
+                    partialLunchEaten++;
+                }
+                if (eEaten) {
+                    dayAmount += eveningRate;
+                    partialEveningEaten++;
+                }
+                if (dEaten) {
+                    dayAmount += dinnerRate;
+                    partialDinnerEaten++;
+                }
+                totalAmount += dayAmount;
+            }
+        } else {
+            if (leave) {
                 leaveCount++;
             }
         }
     }
 
-    let totalAmount = 0;
     let savings = 0;
     let activeDays = 0;
     
     const breakfastEaten = Math.max(0, eligibleDays - breakfastMissed);
     const lunchEaten = Math.max(0, eligibleDays - lunchMissed);
+    const eveningEaten = Math.max(0, eligibleDays - eveningMissed);
     const dinnerEaten = Math.max(0, eligibleDays - dinnerMissed);
 
     if (leaveMode === 'per_meal') {
-        totalAmount = (breakfastEaten * breakfastRate) + (lunchEaten * lunchRate) + (dinnerEaten * dinnerRate);
-        savings = (breakfastMissed * breakfastRate) + (lunchMissed * lunchRate) + (dinnerMissed * dinnerRate);
+        const potentialMax = eligibleDays * 130;
+        savings = Math.max(0, potentialMax - totalAmount);
     } else {
         activeDays = Math.max(0, eligibleDays - leaveCount);
         totalAmount = activeDays * messRate;
@@ -168,29 +210,52 @@ export default function MessBill() {
                     {leaveMode === 'per_meal' ? (
                         <>
                             <div className="grid grid-cols-5 p-4 sm:px-6 bg-gray-50/50 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                                <div className="col-span-2">Meal</div>
+                                <div className="col-span-2">Meal / Package</div>
                                 <div className="text-center">Rate</div>
-                                <div className="text-center">Eaten</div>
+                                <div className="text-center">Attended</div>
                                 <div className="text-right">Subtotal</div>
                             </div>
                             <div className="divide-y divide-gray-100">
+                                <div className="grid grid-cols-5 p-4 sm:px-6 items-center hover:bg-gray-50/30 transition-colors bg-emerald-50/30">
+                                    <div className="col-span-2 text-sm font-semibold text-gray-900">
+                                        All 4 Meals (Full Day)
+                                        <span className="block text-xs text-emerald-600 font-normal">Combo Package (B+L+E+D)</span>
+                                    </div>
+                                    <div className="text-sm text-gray-500 text-center">₹130</div>
+                                    <div className="text-sm text-gray-500 text-center">{allMealsDays} days</div>
+                                    <div className="text-sm font-semibold text-gray-900 text-right">₹{(allMealsDays * 130).toLocaleString()}</div>
+                                </div>
                                 <div className="grid grid-cols-5 p-4 sm:px-6 items-center hover:bg-gray-50/30 transition-colors">
-                                    <div className="col-span-2 text-sm font-medium text-gray-900">Breakfast</div>
+                                    <div className="col-span-2 text-sm font-medium text-gray-900">
+                                        Breakfast <span className="text-xs text-gray-400 font-normal">(Partial days)</span>
+                                    </div>
                                     <div className="text-sm text-gray-500 text-center">₹{breakfastRate}</div>
-                                    <div className="text-sm text-gray-500 text-center">{breakfastEaten} / {eligibleDays}</div>
-                                    <div className="text-sm font-medium text-gray-900 text-right">₹{(breakfastEaten * breakfastRate).toLocaleString()}</div>
+                                    <div className="text-sm text-gray-500 text-center">{partialBreakfastEaten}</div>
+                                    <div className="text-sm font-medium text-gray-900 text-right">₹{(partialBreakfastEaten * breakfastRate).toLocaleString()}</div>
                                 </div>
                                 <div className="grid grid-cols-5 p-4 sm:px-6 items-center hover:bg-gray-50/30 transition-colors">
-                                    <div className="col-span-2 text-sm font-medium text-gray-900">Lunch</div>
+                                    <div className="col-span-2 text-sm font-medium text-gray-900">
+                                        Lunch <span className="text-xs text-gray-400 font-normal">(Partial days)</span>
+                                    </div>
                                     <div className="text-sm text-gray-500 text-center">₹{lunchRate}</div>
-                                    <div className="text-sm text-gray-500 text-center">{lunchEaten} / {eligibleDays}</div>
-                                    <div className="text-sm font-medium text-gray-900 text-right">₹{(lunchEaten * lunchRate).toLocaleString()}</div>
+                                    <div className="text-sm text-gray-500 text-center">{partialLunchEaten}</div>
+                                    <div className="text-sm font-medium text-gray-900 text-right">₹{(partialLunchEaten * lunchRate).toLocaleString()}</div>
                                 </div>
                                 <div className="grid grid-cols-5 p-4 sm:px-6 items-center hover:bg-gray-50/30 transition-colors">
-                                    <div className="col-span-2 text-sm font-medium text-gray-900">Dinner</div>
+                                    <div className="col-span-2 text-sm font-medium text-gray-900">
+                                        Evening <span className="text-xs text-gray-400 font-normal">(Partial days)</span>
+                                    </div>
+                                    <div className="text-sm text-gray-500 text-center">₹{eveningRate}</div>
+                                    <div className="text-sm text-gray-500 text-center">{partialEveningEaten}</div>
+                                    <div className="text-sm font-medium text-gray-900 text-right">₹{(partialEveningEaten * eveningRate).toLocaleString()}</div>
+                                </div>
+                                <div className="grid grid-cols-5 p-4 sm:px-6 items-center hover:bg-gray-50/30 transition-colors">
+                                    <div className="col-span-2 text-sm font-medium text-gray-900">
+                                        Dinner <span className="text-xs text-gray-400 font-normal">(Partial days)</span>
+                                    </div>
                                     <div className="text-sm text-gray-500 text-center">₹{dinnerRate}</div>
-                                    <div className="text-sm text-gray-500 text-center">{dinnerEaten} / {eligibleDays}</div>
-                                    <div className="text-sm font-medium text-gray-900 text-right">₹{(dinnerEaten * dinnerRate).toLocaleString()}</div>
+                                    <div className="text-sm text-gray-500 text-center">{partialDinnerEaten}</div>
+                                    <div className="text-sm font-medium text-gray-900 text-right">₹{(partialDinnerEaten * dinnerRate).toLocaleString()}</div>
                                 </div>
                             </div>
                         </>
@@ -227,6 +292,11 @@ export default function MessBill() {
                     <Separator />
 
                     <div className="bg-gray-50/30 p-4 sm:px-6 text-center">
+                        {leaveMode === 'per_meal' && (
+                            <p className="text-xs text-gray-500 font-medium">
+                                Total Meals Attended: Breakfast ({breakfastEaten}/{eligibleDays}), Lunch ({lunchEaten}/{eligibleDays}), Evening ({eveningEaten}/{eligibleDays}), Dinner ({dinnerEaten}/{eligibleDays})
+                            </p>
+                        )}
                         {leaveMode === 'full_day' && (
                             <p className="text-xs text-gray-400 font-mono">
                                 ({daysInMonth} Total − {leaveCount} Leave) × ₹{messRate} = ₹{totalAmount.toLocaleString()}

@@ -11,16 +11,21 @@ export default function BillSummary({
 }) {
     if (leaveMode === 'per_meal' && mealBreakdown) {
         const { 
-            breakfastRate, lunchRate, dinnerRate, 
-            breakfastEaten, lunchEaten, dinnerEaten, 
-            breakfastMissed, lunchMissed, dinnerMissed 
+            breakfastRate = 40, lunchRate = 50, eveningRate = 20, dinnerRate = 50, 
+            breakfastEaten = 0, lunchEaten = 0, eveningEaten = 0, dinnerEaten = 0, 
+            breakfastMissed = 0, lunchMissed = 0, eveningMissed = 0, dinnerMissed = 0,
+            allMealsDays = 0,
+            partialBreakfastEaten = 0, partialLunchEaten = 0, partialEveningEaten = 0, partialDinnerEaten = 0,
+            totalAmount: propTotalAmount
         } = mealBreakdown;
 
-        const totalBreakfast = breakfastEaten * breakfastRate;
-        const totalLunch = lunchEaten * lunchRate;
-        const totalDinner = dinnerEaten * dinnerRate;
-        const totalAmount = totalBreakfast + totalLunch + totalDinner;
-        const savings = (breakfastMissed * breakfastRate) + (lunchMissed * lunchRate) + (dinnerMissed * dinnerRate);
+        const totalBreakfast = (allMealsDays > 0 ? partialBreakfastEaten : breakfastEaten) * breakfastRate;
+        const totalLunch = (allMealsDays > 0 ? partialLunchEaten : lunchEaten) * lunchRate;
+        const totalEvening = (allMealsDays > 0 ? partialEveningEaten : eveningEaten) * eveningRate;
+        const totalDinner = (allMealsDays > 0 ? partialDinnerEaten : dinnerEaten) * dinnerRate;
+        const totalCombo = allMealsDays * 130;
+        const totalAmount = propTotalAmount !== undefined ? propTotalAmount : (totalCombo + totalBreakfast + totalLunch + totalEvening + totalDinner);
+        const savings = (breakfastMissed * breakfastRate) + (lunchMissed * lunchRate) + (eveningMissed * eveningRate) + (dinnerMissed * dinnerRate);
 
         return (
             <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
@@ -38,32 +43,57 @@ export default function BillSummary({
 
                 <div className="p-0">
                     <div className="grid grid-cols-5 text-xs font-semibold text-gray-500 bg-gray-50 uppercase tracking-wider px-6 py-3 border-b border-gray-100">
-                        <div className="col-span-2">Meal</div>
+                        <div className="col-span-2">Meal / Package</div>
                         <div className="text-center">Rate</div>
-                        <div className="text-center">Eaten</div>
+                        <div className="text-center">Attended</div>
                         <div className="text-right">Subtotal</div>
                     </div>
 
                     <div className="divide-y divide-gray-50">
+                        {allMealsDays > 0 && (
+                            <div className="grid grid-cols-5 px-6 py-4 items-center bg-emerald-50/30">
+                                <div className="col-span-2 text-sm font-semibold text-gray-900">
+                                    All 4 Meals (Full Day)
+                                </div>
+                                <div className="text-sm text-gray-500 text-center">₹130</div>
+                                <div className="text-sm text-gray-500 text-center">{allMealsDays} days</div>
+                                <div className="text-sm font-semibold text-gray-900 text-right">₹{totalCombo.toLocaleString()}</div>
+                            </div>
+                        )}
                         {/* Breakfast */}
                         <div className="grid grid-cols-5 px-6 py-4 items-center">
-                            <div className="col-span-2 text-sm font-medium text-gray-900">Breakfast</div>
+                            <div className="col-span-2 text-sm font-medium text-gray-900">
+                                Breakfast {allMealsDays > 0 && <span className="text-xs text-gray-400 font-normal">(Partial)</span>}
+                            </div>
                             <div className="text-sm text-gray-500 text-center">₹{breakfastRate}</div>
-                            <div className="text-sm text-gray-500 text-center">{breakfastEaten}</div>
+                            <div className="text-sm text-gray-500 text-center">{allMealsDays > 0 ? partialBreakfastEaten : breakfastEaten}</div>
                             <div className="text-sm font-semibold text-gray-900 text-right">₹{totalBreakfast.toLocaleString()}</div>
                         </div>
                         {/* Lunch */}
                         <div className="grid grid-cols-5 px-6 py-4 items-center">
-                            <div className="col-span-2 text-sm font-medium text-gray-900">Lunch</div>
+                            <div className="col-span-2 text-sm font-medium text-gray-900">
+                                Lunch {allMealsDays > 0 && <span className="text-xs text-gray-400 font-normal">(Partial)</span>}
+                            </div>
                             <div className="text-sm text-gray-500 text-center">₹{lunchRate}</div>
-                            <div className="text-sm text-gray-500 text-center">{lunchEaten}</div>
+                            <div className="text-sm text-gray-500 text-center">{allMealsDays > 0 ? partialLunchEaten : lunchEaten}</div>
                             <div className="text-sm font-semibold text-gray-900 text-right">₹{totalLunch.toLocaleString()}</div>
+                        </div>
+                        {/* Evening */}
+                        <div className="grid grid-cols-5 px-6 py-4 items-center">
+                            <div className="col-span-2 text-sm font-medium text-gray-900">
+                                Evening {allMealsDays > 0 && <span className="text-xs text-gray-400 font-normal">(Partial)</span>}
+                            </div>
+                            <div className="text-sm text-gray-500 text-center">₹{eveningRate}</div>
+                            <div className="text-sm text-gray-500 text-center">{allMealsDays > 0 ? partialEveningEaten : eveningEaten}</div>
+                            <div className="text-sm font-semibold text-gray-900 text-right">₹{totalEvening.toLocaleString()}</div>
                         </div>
                         {/* Dinner */}
                         <div className="grid grid-cols-5 px-6 py-4 items-center">
-                            <div className="col-span-2 text-sm font-medium text-gray-900">Dinner</div>
+                            <div className="col-span-2 text-sm font-medium text-gray-900">
+                                Dinner {allMealsDays > 0 && <span className="text-xs text-gray-400 font-normal">(Partial)</span>}
+                            </div>
                             <div className="text-sm text-gray-500 text-center">₹{dinnerRate}</div>
-                            <div className="text-sm text-gray-500 text-center">{dinnerEaten}</div>
+                            <div className="text-sm text-gray-500 text-center">{allMealsDays > 0 ? partialDinnerEaten : dinnerEaten}</div>
                             <div className="text-sm font-semibold text-gray-900 text-right">₹{totalDinner.toLocaleString()}</div>
                         </div>
                     </div>

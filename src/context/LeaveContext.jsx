@@ -67,7 +67,7 @@ export function LeaveProvider({ children }) {
         while (keepFetching) {
             let query = supabase
                 .from('leaves')
-                .select('leave_date, mess_number, is_admin_granted, breakfast, lunch, dinner')
+                .select('leave_date, mess_number, is_admin_granted, breakfast, lunch, evening, dinner')
                 .eq('status', 'Approved')
                 .eq('hostel_id', user.hostelId)
                 .gte('leave_date', pastStr)
@@ -99,7 +99,7 @@ export function LeaveProvider({ children }) {
             }
         }
 
-        // Transform records to map: { 'YYYY-MM-DD': [{ messNumber, isAdminGranted, breakfast, lunch, dinner }] }
+        // Transform records to map: { 'YYYY-MM-DD': [{ messNumber, isAdminGranted, breakfast, lunch, evening, dinner }] }
         const leavesMap = {};
         allData.forEach(record => {
             const d = record.leave_date;
@@ -113,6 +113,7 @@ export function LeaveProvider({ children }) {
                     isAdminGranted: record.is_admin_granted,
                     breakfast: record.breakfast ?? true,
                     lunch: record.lunch ?? true,
+                    evening: record.evening ?? true,
                     dinner: record.dinner ?? true,
                 });
             } else if (record.is_admin_granted && !leavesMap[d][existingIdx].isAdminGranted) {
@@ -120,6 +121,7 @@ export function LeaveProvider({ children }) {
                 leavesMap[d][existingIdx].isAdminGranted = true;
                 leavesMap[d][existingIdx].breakfast = record.breakfast ?? true;
                 leavesMap[d][existingIdx].lunch = record.lunch ?? true;
+                leavesMap[d][existingIdx].evening = record.evening ?? true;
                 leavesMap[d][existingIdx].dinner = record.dinner ?? true;
             }
         });
@@ -140,7 +142,7 @@ export function LeaveProvider({ children }) {
             return record[meal] === true;
         }
         // Otherwise, on leave if ANY meal is on leave
-        return record.breakfast || record.lunch || record.dinner;
+        return record.breakfast || record.lunch || record.evening || record.dinner;
     };
 
     const getStudentLeaveDetail = (messNumber, date) => {
@@ -148,12 +150,12 @@ export function LeaveProvider({ children }) {
         return leaves[shapeDate]?.find(l => l.messNumber === messNumber) || null;
     };
 
-    const addLeave = async (messNumber, date, studentId, isAdminGranted = false, meals = { breakfast: true, lunch: true, dinner: true }) => {
+    const addLeave = async (messNumber, date, studentId, isAdminGranted = false, meals = { breakfast: true, lunch: true, evening: true, dinner: true }) => {
         if (!user?.hostelId) return { success: false, error: 'No hostel assigned' };
         const shapeDate = date.includes('T') ? date.split('T')[0] : date;
 
         // If all meals are false, treat as removal
-        if (!meals.breakfast && !meals.lunch && !meals.dinner) {
+        if (!meals.breakfast && !meals.lunch && !meals.evening && !meals.dinner) {
             return removeLeave(messNumber, shapeDate);
         }
 
@@ -164,6 +166,7 @@ export function LeaveProvider({ children }) {
             if (!isAdminGranted || existingLocal.isAdminGranted) {
                 if (existingLocal.breakfast === meals.breakfast &&
                     existingLocal.lunch === meals.lunch &&
+                    existingLocal.evening === meals.evening &&
                     existingLocal.dinner === meals.dinner) {
                     return { success: true, alreadyExists: true };
                 }
@@ -181,6 +184,7 @@ export function LeaveProvider({ children }) {
                     isAdminGranted: isAdminGranted || (existingLocal?.isAdminGranted ?? false),
                     breakfast: meals.breakfast,
                     lunch: meals.lunch,
+                    evening: meals.evening,
                     dinner: meals.dinner,
                 }]
             };
@@ -202,6 +206,7 @@ export function LeaveProvider({ children }) {
             const updatePayload = {
                 breakfast: meals.breakfast,
                 lunch: meals.lunch,
+                evening: meals.evening,
                 dinner: meals.dinner,
             };
             if (isAdminGranted) {
@@ -231,6 +236,7 @@ export function LeaveProvider({ children }) {
             is_admin_granted: isAdminGranted,
             breakfast: meals.breakfast,
             lunch: meals.lunch,
+            evening: meals.evening,
             dinner: meals.dinner,
         }]);
 
@@ -243,7 +249,7 @@ export function LeaveProvider({ children }) {
         return { success: true };
     };
 
-    const addBulkLeaves = async (studentsList, date, isAdminGranted = false, meals = { breakfast: true, lunch: true, dinner: true }) => {
+    const addBulkLeaves = async (studentsList, date, isAdminGranted = false, meals = { breakfast: true, lunch: true, evening: true, dinner: true }) => {
         if (!user?.hostelId) return { success: false, error: 'No hostel assigned' };
         const shapeDate = date.includes('T') ? date.split('T')[0] : date;
 
@@ -256,6 +262,7 @@ export function LeaveProvider({ children }) {
             is_admin_granted: isAdminGranted,
             breakfast: meals.breakfast,
             lunch: meals.lunch,
+            evening: meals.evening,
             dinner: meals.dinner,
         }));
 
@@ -270,6 +277,7 @@ export function LeaveProvider({ children }) {
                     isAdminGranted,
                     breakfast: meals.breakfast,
                     lunch: meals.lunch,
+                    evening: meals.evening,
                     dinner: meals.dinner,
                 });
             });
