@@ -15,6 +15,7 @@ export default function AdminSettings() {
         dinnerRate, 
         messRate, 
         cutoffTime, 
+        maxLeaves,
         hostelName, 
         updateSettings, 
         loading 
@@ -27,6 +28,8 @@ export default function AdminSettings() {
     const [eRate, setERate] = useState(eveningRate || 20);
     const [dRate, setDRate] = useState(dinnerRate || 50);
     const [cutoff, setCutoff] = useState(cutoffTime);
+    const [isUnlimited, setIsUnlimited] = useState(maxLeaves === null);
+    const [limit, setLimit] = useState(maxLeaves ?? 10);
     const [isSaving, setIsSaving] = useState(false);
     const [isBackingUp, setIsBackingUp] = useState(false);
 
@@ -39,7 +42,9 @@ export default function AdminSettings() {
         setERate(eveningRate || 20);
         setDRate(dinnerRate || 50);
         setCutoff(cutoffTime);
-    }, [leaveMode, messRate, breakfastRate, lunchRate, eveningRate, dinnerRate, cutoffTime]);
+        setIsUnlimited(maxLeaves === null);
+        setLimit(maxLeaves ?? 10);
+    }, [leaveMode, messRate, breakfastRate, lunchRate, eveningRate, dinnerRate, cutoffTime, maxLeaves]);
 
     const handleSave = async (e) => {
         e.preventDefault();
@@ -53,6 +58,7 @@ export default function AdminSettings() {
             eveningRate: parseInt(eRate) || 0,
             dinnerRate: parseInt(dRate) || 0,
             cutoffTime: parseInt(cutoff),
+            maxLeaves: isUnlimited ? null : (parseInt(limit) || 0),
         });
 
         if (result.success) {
@@ -265,6 +271,50 @@ export default function AdminSettings() {
                             </div>
                             <p className="text-xs text-gray-400">
                                 Students cannot apply for next-day leave after this time.
+                            </p>
+                        </div>
+
+                        <div className="border-t border-gray-100" />
+
+                        {/* Monthly Leave Limit */}
+                        <div className="space-y-4">
+                            <label className="block text-sm font-semibold text-gray-700">Monthly Leave Policy</label>
+                            
+                            <div className="flex items-center gap-3">
+                                <label className="relative inline-flex items-center cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={isUnlimited}
+                                        onChange={(e) => setIsUnlimited(e.target.checked)}
+                                        className="sr-only peer"
+                                    />
+                                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                                </label>
+                                <span className="text-sm font-medium text-gray-700">
+                                    {isUnlimited ? 'Unlimited Leaves' : 'Fixed Monthly Limit'}
+                                </span>
+                            </div>
+
+                            {isUnlimited ? (
+                                <div className="p-3 bg-emerald-50 border border-emerald-100 rounded-lg text-emerald-800 text-xs font-medium max-w-sm">
+                                    Students in this hostel can take unlimited leaves with no monthly cap.
+                                </div>
+                            ) : (
+                                <div className="space-y-2 max-w-xs">
+                                    <label className="text-xs font-medium text-gray-600">Maximum Leave Days Per Month</label>
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        max="31"
+                                        value={limit}
+                                        onChange={(e) => setLimit(e.target.value)}
+                                        className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 focus:bg-white transition-all"
+                                        required={!isUnlimited}
+                                    />
+                                </div>
+                            )}
+                            <p className="text-xs text-gray-400">
+                                Set a monthly cap or allow unlimited leaves for this hostel.
                             </p>
                         </div>
 
